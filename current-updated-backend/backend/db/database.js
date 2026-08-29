@@ -124,6 +124,14 @@ async function initDb() {
         estimated_distance_km REAL,
         completed_by_customer INTEGER DEFAULT 0,
         completed_by_worker INTEGER DEFAULT 0,
+        tracking_consent_given INTEGER DEFAULT 0,
+        tracking_consent_at TIMESTAMP,
+        tracking_active INTEGER DEFAULT 0,
+        is_emergency INTEGER DEFAULT 0,
+        emergency_timeout_seconds INTEGER DEFAULT 60,
+        dispatch_attempts INTEGER DEFAULT 0,
+        rejected_worker_ids TEXT DEFAULT '[]',
+        emergency_fee REAL DEFAULT 0.0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -196,6 +204,18 @@ async function initDb() {
       ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_confidence_score REAL;
       ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_status TEXT DEFAULT 'pending';
       CREATE INDEX IF NOT EXISTS idx_workers_ocr_status ON workers(ocr_status);
+
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS tracking_consent_given INTEGER DEFAULT 0;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS tracking_consent_at TIMESTAMP;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS tracking_active INTEGER DEFAULT 0;
+      CREATE INDEX IF NOT EXISTS idx_bookings_tracking_active ON bookings(tracking_active);
+
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_emergency INTEGER DEFAULT 0;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS emergency_timeout_seconds INTEGER DEFAULT 60;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS dispatch_attempts INTEGER DEFAULT 0;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rejected_worker_ids TEXT DEFAULT '[]';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS emergency_fee REAL DEFAULT 0.0;
+      CREATE INDEX IF NOT EXISTS idx_bookings_emergency_status ON bookings(is_emergency, status);
     `);
 
     // Backfill payments.federation_id from bookings if missing

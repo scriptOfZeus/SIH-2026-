@@ -5,6 +5,71 @@ const db = require('../db/database');
 const { ok, fail } = require('../utils/response');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { haversineKm } = require('../utils/distance');
+const trackingService = require('../services/trackingService');
+const emergencyService = require('../services/emergencyService');
+
+// POST /bookings/emergency — customer creates an on-demand emergency booking
+router.post('/emergency', requireAuth, requireRole('customer'), async (req, res) => {
+  const { skill_category, service_address, service_lat, service_lng, emergency_fee, timeout_seconds, federation_id } = req.body;
+  if (!skill_category || !service_address || !service_lat || !service_lng) {
+    return fail(res, 'BAD_REQUEST', 'skill_category, service_address, service_lat, service_lng are required for emergency booking');
+  }
+
+  // Anti-spam rate limiting
+  try {
+    emergencyService.checkCustomerSpam(req.user.id);
+  } catch (err) {
+    return fail(res, err.code || 'RATE_LIMITED', err.message, err.statusCode || 429);
+  }
+
+  // Safe Federation Resolution
+  let bookingFederationId = federation_id || null;
+  if (bookingFederationId) {
+    const fed = await db.get('SELECT id FROM federations WHERE id = ?', [bookingFederationId]);
+    if (!fed) bookingFederationId = null;
+  }
+
+  if (!bookingFederationId) {
+    // Check nearest approved worker to infer local federation
+    const candidates = await db.all(`
+      SELECT federation_id, lat, lng FROM workers
+      WHERE skill_category = ? AND verification_status = 'approved' AND lat IS NOT NULL AND lng IS NOT NULL
+    `, [skill_category]);
+
+    if (candidates.length > 0) {
+      const sorted = candidates
+        .map(w => ({ ...w, d: haversineKm(service_lat, service_lng, w.lat, w.lng) }))
+        .sort((a, b) => a.d - b.d);
+      bookingFederationId = sorted[0].federation_id;
+    }
+  }
+
+  if (!bookingFederationId) {
+    const fallbackFed = await db.get('SELECT id FROM federations ORDER BY created_at ASC LIMIT 1');
+    bookingFederationId = fallbackFed ? fallbackFed.id : null;
+  }
+
+  const id = uuidv4();
+  const timeoutSec = Number(timeout_seconds) || 60;
+  const fee = (emergency_fee !== undefined && !isNaN(Number(emergency_fee))) ? Number(emergency_fee) : 50.0;
+
+  await db.run(`
+    INSERT INTO bookings (
+      id, customer_id, federation_id, skill_category, service_address, service_lat, service_lng,
+      scheduled_time, is_emergency, emergency_timeout_seconds, emergency_fee, status, rejected_worker_ids
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'immediate', 1, ?, ?, 'requested', '[]')
+  `, [id, req.user.id, bookingFederationId, skill_category, service_address, service_lat, service_lng, timeoutSec, fee]);
+
+  // Dispatch immediately to closest eligible candidate
+  const dispatchResult = await emergencyService.dispatchEmergencyBooking(id, timeoutSec);
+  const updatedBooking = await db.get('SELECT * FROM bookings WHERE id = ?', [id]);
+
+  return ok(res, {
+    booking: updatedBooking,
+    dispatch: dispatchResult,
+  }, 201);
+});
 
 // POST /bookings — customer creates a booking
 router.post('/', requireAuth, requireRole('customer'), async (req, res) => {
@@ -82,8 +147,18 @@ router.patch('/:id/accept', requireAuth, requireRole('worker'), async (req, res)
   if (!booking) return fail(res, 'BOOKING_NOT_FOUND', 'Booking does not exist', 404);
   if (booking.worker_id !== req.user.id) return fail(res, 'FORBIDDEN', 'Not your booking', 403);
 
+  if (booking.is_emergency) {
+    try {
+      const updatedBooking = await emergencyService.handleEmergencyAcceptance(req.params.id, req.user.id);
+      return ok(res, updatedBooking);
+    } catch (err) {
+      return fail(res, err.code || 'ACCEPT_ERROR', err.message, err.statusCode || 400);
+    }
+  }
+
   await db.run("UPDATE bookings SET status = 'accepted', updated_at = datetime('now') WHERE id = ?", [req.params.id]);
   const updatedBooking = await db.get('SELECT * FROM bookings WHERE id = ?', [req.params.id]);
+  trackingService.initTrackingSession(updatedBooking);
   return ok(res, updatedBooking);
 });
 
@@ -92,6 +167,16 @@ router.patch('/:id/reject', requireAuth, requireRole('worker'), async (req, res)
   const booking = await db.get('SELECT * FROM bookings WHERE id = ?', [req.params.id]);
   if (!booking) return fail(res, 'BOOKING_NOT_FOUND', 'Booking does not exist', 404);
   if (booking.worker_id !== req.user.id) return fail(res, 'FORBIDDEN', 'Not your booking', 403);
+
+  if (booking.is_emergency) {
+    try {
+      const dispatchResult = await emergencyService.handleEmergencyRejection(req.params.id, req.user.id);
+      const updatedBooking = await db.get('SELECT * FROM bookings WHERE id = ?', [req.params.id]);
+      return ok(res, { booking: updatedBooking, dispatch: dispatchResult });
+    } catch (err) {
+      return fail(res, err.code || 'REJECT_ERROR', err.message, err.statusCode || 400);
+    }
+  }
 
   // simple re-match: find next nearest approved worker excluding this one
   let newWorkerId = null;
@@ -128,7 +213,9 @@ router.patch('/:id/complete', requireAuth, async (req, res) => {
 
   let updated = await db.get('SELECT * FROM bookings WHERE id = ?', [req.params.id]);
   if (updated.completed_by_customer && updated.completed_by_worker) {
-    await db.run("UPDATE bookings SET status = 'completed', updated_at = datetime('now') WHERE id = ?", [req.params.id]);
+    await db.run("UPDATE bookings SET status = 'completed', tracking_active = 0, updated_at = datetime('now') WHERE id = ?", [req.params.id]);
+    trackingService.teardownTrackingSession(req.params.id);
+    emergencyService.clearEmergencyTimer(req.params.id);
     updated = await db.get('SELECT * FROM bookings WHERE id = ?', [req.params.id]);
   }
   return ok(res, updated);
@@ -140,7 +227,9 @@ router.patch('/:id/cancel', requireAuth, async (req, res) => {
   if (!booking) return fail(res, 'BOOKING_NOT_FOUND', 'Booking does not exist', 404);
   if (booking.status === 'completed') return fail(res, 'ALREADY_COMPLETED', 'Cannot cancel a completed booking', 400);
 
-  await db.run("UPDATE bookings SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?", [req.params.id]);
+  await db.run("UPDATE bookings SET status = 'cancelled', tracking_active = 0, updated_at = datetime('now') WHERE id = ?", [req.params.id]);
+  trackingService.teardownTrackingSession(req.params.id);
+  emergencyService.clearEmergencyTimer(req.params.id);
   const updatedBooking = await db.get('SELECT * FROM bookings WHERE id = ?', [req.params.id]);
   return ok(res, updatedBooking);
 });
