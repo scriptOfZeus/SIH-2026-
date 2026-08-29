@@ -1,0 +1,196 @@
+{
+  "generated_at": "2026-08-29T20:04:31.612189+00:00",
+  "model_type": "holt_winters",
+  "evaluation_strategy": "chronological_holdout",
+  "holdout_days": 14,
+  "overall": {
+    "mean_mae": 1.7607,
+    "mean_rmse": 2.2468,
+    "mean_smape_percent": 12.6226,
+    "total_train_observations": 7580,
+    "total_test_observations": 280,
+    "total_models_evaluated": 20
+  },
+  "segments": [
+    {
+      "region": "Bengaluru",
+      "skill_category": "carpenter",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 0.8571,
+      "rmse": 1.069,
+      "smape_percent": 10.6526
+    },
+    {
+      "region": "Bengaluru",
+      "skill_category": "cleaner",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 2.5,
+      "rmse": 3.1282,
+      "smape_percent": 13.3116
+    },
+    {
+      "region": "Bengaluru",
+      "skill_category": "electrician",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 1.6429,
+      "rmse": 2.252,
+      "smape_percent": 6.7864
+    },
+    {
+      "region": "Bengaluru",
+      "skill_category": "painter",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 1.0714,
+      "rmse": 1.488,
+      "smape_percent": 17.4146
+    },
+    {
+      "region": "Bengaluru",
+      "skill_category": "plumber",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 2.2143,
+      "rmse": 2.8158,
+      "smape_percent": 11.8161
+    },
+    {
+      "region": "Delhi",
+      "skill_category": "carpenter",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 1.0,
+      "rmse": 1.2536,
+      "smape_percent": 12.2526
+    },
+    {
+      "region": "Delhi",
+      "skill_category": "cleaner",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 1.7143,
+      "rmse": 2.0,
+      "smape_percent": 9.6722
+    },
+    {
+      "region": "Delhi",
+      "skill_category": "electrician",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 2.3571,
+      "rmse": 2.841,
+      "smape_percent": 9.3632
+    },
+    {
+      "region": "Delhi",
+      "skill_category": "painter",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 1.0,
+      "rmse": 1.1952,
+      "smape_percent": 18.2514
+    },
+    {
+      "region": "Delhi",
+      "skill_category": "plumber",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 2.4286,
+      "rmse": 2.952,
+      "smape_percent": 9.5837
+    },
+    {
+      "region": "Kolkata",
+      "skill_category": "carpenter",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 0.8571,
+      "rmse": 1.1952,
+      "smape_percent": 12.0888
+    },
+    {
+      "region": "Kolkata",
+      "skill_category": "cleaner",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 1.7857,
+      "rmse": 2.1876,
+      "smape_percent": 13.609
+    },
+    {
+      "region": "Kolkata",
+      "skill_category": "electrician",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 3.2143,
+      "rmse": 3.7321,
+      "smape_percent": 17.0396
+    },
+    {
+      "region": "Kolkata",
+      "skill_category": "painter",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 1.0714,
+      "rmse": 1.4392,
+      "smape_percent": 20.3631
+    },
+    {
+      "region": "Kolkata",
+      "skill_category": "plumber",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 1.6429,
+      "rmse": 2.4928,
+      "smape_percent": 7.8632
+    },
+    {
+      "region": "Mumbai",
+      "skill_category": "carpenter",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 1.9286,
+      "rmse": 2.3146,
+      "smape_percent": 22.5517
+    },
+    {
+      "region": "Mumbai",
+      "skill_category": "cleaner",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 2.1429,
+      "rmse": 2.9032,
+      "smape_percent": 10.5778
+    },
+    {
+      "region": "Mumbai",
+      "skill_category": "electrician",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 2.5714,
+      "rmse": 3.2071,
+      "smape_percent": 9.8479
+    },
+    {
+      "region": "Mumbai",
+      "skill_category": "painter",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 0.5714,
+      "rmse": 0.7559,
+      "smape_percent": 8.4643
+    },
+    {
+      "region": "Mumbai",
+      "skill_category": "plumber",
+      "train_observations": 379,
+      "test_observations": 14,
+      "mae": 2.6429,
+      "rmse": 3.7129,
+      "smape_percent": 10.9418
+    }
+  ]
+}

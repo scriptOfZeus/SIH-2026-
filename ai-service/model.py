@@ -10,9 +10,10 @@ The code auto-detects which library is installed and picks the best option.
 One model is trained per (region, skill_category) combination.
 """
 
+import json
 import logging
 import warnings
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import joblib
@@ -24,6 +25,7 @@ ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
 DATA_DIR = Path(__file__).parent / "data"
 MODEL_PATH = ARTIFACTS_DIR / "models.pkl"
 DATA_PATH = DATA_DIR / "synthetic_bookings.csv"
+EVALUATION_PATH = ARTIFACTS_DIR / "evaluation.json"
 
 MIN_ROWS_FOR_MODEL = 30  # below this → moving-average fallback
 
@@ -248,6 +250,149 @@ def predict(models: dict, region=None, skill_category=None, horizon_days: int = 
     return forecasts
 
 
+def get_historical_baselines(data_path: Path = None) -> list:
+    """
+    Compute historical daily demand baselines for each (region, skill_category) pair.
+    Baseline demand is the mean daily volume across the historical series.
+    """
+    path = data_path or DATA_PATH
+    if not path.exists():
+        return []
+    df = pd.read_csv(path)
+    baselines = []
+    for (region, category), gdf in df.groupby(["region", "skill_category"]):
+        mean_demand = float(gdf["y"].mean())
+        baselines.append({
+            "region": region,
+            "skill_category": category,
+            "baseline_demand": round(mean_demand, 2),
+            "historical_days": len(gdf),
+            "min_demand": int(gdf["y"].min()),
+            "max_demand": int(gdf["y"].max()),
+        })
+    return sorted(baselines, key=lambda x: (x["region"], x["skill_category"]))
+
+
+
+# ════════════════════════════════════════════════════════════════════════
+#  OFFLINE MODEL EVALUATION (Chronological Holdout Split)
+# ════════════════════════════════════════════════════════════════════════
+
+def calculate_metrics(y_true, y_pred) -> dict:
+    """
+    Calculate standard time-series evaluation metrics: MAE, RMSE, sMAPE.
+    Inputs can be lists, pandas Series, or numpy arrays.
+    """
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+
+    if len(y_true) == 0:
+        return {"mae": 0.0, "rmse": 0.0, "smape_percent": 0.0}
+
+    mae = float(np.mean(np.abs(y_true - y_pred)))
+    rmse = float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
+
+    # Symmetric Mean Absolute Percentage Error (sMAPE)
+    denominator = np.abs(y_true) + np.abs(y_pred)
+    smape_elements = np.where(
+        denominator == 0,
+        0.0,
+        200.0 * np.abs(y_true - y_pred) / denominator
+    )
+    smape = float(np.mean(smape_elements))
+
+    return {
+        "mae": round(mae, 4),
+        "rmse": round(rmse, 4),
+        "smape_percent": round(smape, 4),
+    }
+
+
+def evaluate_all(test_days: int = 14, output_path: Path = None) -> dict:
+    """
+    Perform a chronological holdout evaluation across all region/category models.
+    Data is NEVER shuffled to preserve temporal integrity.
+    The final test_days of each segment are reserved for out-of-sample testing.
+    """
+    if output_path is None:
+        output_path = EVALUATION_PATH
+    else:
+        output_path = Path(output_path)
+
+    print(f"\n[INFO] Running chronological holdout evaluation (test_days={test_days}) ...")
+    df = pd.read_csv(DATA_PATH)
+    df["ds"] = pd.to_datetime(df["ds"])
+
+    model_type = get_model_type()
+    segment_results = []
+    groups = list(df.groupby(["region", "skill_category"]))
+
+    for i, ((region, category), gdf) in enumerate(groups, 1):
+        ts = gdf[["ds", "y"]].sort_values("ds").reset_index(drop=True)
+        if len(ts) <= test_days:
+            continue
+
+        # Strictly chronological split (train = past, test = future holdout)
+        train_ts = ts.iloc[:-test_days].copy()
+        test_ts = ts.iloc[-test_days:].copy()
+
+        try:
+            if model_type == "prophet":
+                trained = _train_prophet(train_ts)
+                pred_df = _predict_prophet(trained, test_days)
+            elif model_type == "holt_winters":
+                trained = _train_holt_winters(train_ts)
+                pred_df = _predict_holt_winters(trained, test_days)
+            else:
+                trained = _train_moving_average(train_ts)
+                pred_df = _predict_moving_average(trained, test_days)
+
+            y_true = test_ts["y"].values
+            y_pred = pred_df["yhat"].values
+
+            metrics = calculate_metrics(y_true, y_pred)
+            segment_results.append({
+                "region": region,
+                "skill_category": category,
+                "train_observations": len(train_ts),
+                "test_observations": len(test_ts),
+                "mae": metrics["mae"],
+                "rmse": metrics["rmse"],
+                "smape_percent": metrics["smape_percent"],
+            })
+        except Exception as exc:
+            logging.warning("Evaluation failed for (%s, %s): %s", region, category, exc)
+
+    overall_metrics = {
+        "mean_mae": round(float(np.mean([s["mae"] for s in segment_results])), 4),
+        "mean_rmse": round(float(np.mean([s["rmse"] for s in segment_results])), 4),
+        "mean_smape_percent": round(float(np.mean([s["smape_percent"] for s in segment_results])), 4),
+        "total_train_observations": int(sum(s["train_observations"] for s in segment_results)),
+        "total_test_observations": int(sum(s["test_observations"] for s in segment_results)),
+        "total_models_evaluated": len(segment_results),
+    }
+
+    report = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "model_type": model_type,
+        "evaluation_strategy": "chronological_holdout",
+        "holdout_days": test_days,
+        "overall": overall_metrics,
+        "segments": segment_results,
+    }
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+
+    print(f"[OK] Saved evaluation report -> {output_path}")
+    print(f"   Overall MAE:   {overall_metrics['mean_mae']}")
+    print(f"   Overall RMSE:  {overall_metrics['mean_rmse']}")
+    print(f"   Overall sMAPE: {overall_metrics['mean_smape_percent']}%")
+    return report
+
+
 # ── CLI entry point ──────────────────────────────────────────────────────
 if __name__ == "__main__":
     train_all()
+    evaluate_all()

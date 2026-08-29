@@ -92,6 +92,11 @@ async function initDb() {
         lng REAL,
         avg_rating REAL DEFAULT 0,
         reliability_score REAL DEFAULT 1.0,
+        certificate_document_url TEXT,
+        ocr_extracted_number TEXT,
+        ocr_extracted_name TEXT,
+        ocr_confidence_score REAL,
+        ocr_status TEXT DEFAULT 'pending',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -126,6 +131,7 @@ async function initDb() {
       CREATE TABLE IF NOT EXISTS payments (
         id TEXT PRIMARY KEY,
         booking_id TEXT REFERENCES bookings(id),
+        federation_id TEXT REFERENCES federations(id),
         amount REAL,
         platform_commission REAL,
         worker_payout REAL,
@@ -143,9 +149,60 @@ async function initDb() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS demand_forecast_snapshots (
+        id TEXT PRIMARY KEY,
+        federation_id TEXT REFERENCES federations(id),
+        region TEXT NOT NULL,
+        skill_category TEXT NOT NULL,
+        forecast_date TEXT NOT NULL,
+        predicted_demand INTEGER NOT NULL,
+        lower_bound INTEGER NOT NULL,
+        upper_bound INTEGER NOT NULL,
+        baseline_demand REAL,
+        growth_percent REAL,
+        hotspot_level TEXT DEFAULT 'LOW',
+        model_type TEXT DEFAULT 'holt_winters',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS reallocation_alerts (
+        id TEXT PRIMARY KEY,
+        federation_id TEXT REFERENCES federations(id),
+        skill_category TEXT NOT NULL,
+        source_region TEXT NOT NULL,
+        target_region TEXT NOT NULL,
+        reallocate_count INTEGER NOT NULL,
+        distance_km REAL NOT NULL,
+        reason TEXT NOT NULL,
+        status TEXT DEFAULT 'pending_approval',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE INDEX IF NOT EXISTS idx_workers_phone ON workers(phone);
       CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
       CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+      CREATE INDEX IF NOT EXISTS idx_snapshots_region_cat ON demand_forecast_snapshots(region, skill_category);
+      CREATE INDEX IF NOT EXISTS idx_snapshots_fed ON demand_forecast_snapshots(federation_id);
+      CREATE INDEX IF NOT EXISTS idx_reallocation_fed ON reallocation_alerts(federation_id);
+      CREATE INDEX IF NOT EXISTS idx_reallocation_status ON reallocation_alerts(status);
+
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS federation_id TEXT REFERENCES federations(id);
+      CREATE INDEX IF NOT EXISTS idx_payments_fed ON payments(federation_id);
+
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS certificate_document_url TEXT;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_extracted_number TEXT;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_extracted_name TEXT;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_confidence_score REAL;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_status TEXT DEFAULT 'pending';
+      CREATE INDEX IF NOT EXISTS idx_workers_ocr_status ON workers(ocr_status);
+    `);
+
+    // Backfill payments.federation_id from bookings if missing
+    await db.run(`
+      UPDATE payments 
+      SET federation_id = (SELECT federation_id FROM bookings WHERE bookings.id = payments.booking_id)
+      WHERE federation_id IS NULL AND booking_id IS NOT NULL
     `);
 
     // Seed one federation + one admin if empty

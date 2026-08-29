@@ -38,7 +38,7 @@ router.post('/otp/verify', async (req, res) => {
       await db.run('UPDATE workers SET account_activated = 1 WHERE id = ?', [worker.id]);
       worker = await db.get('SELECT * FROM workers WHERE id = ?', [worker.id]);
     }
-    const token = sign({ id: worker.id, role: 'worker', phone });
+    const token = sign({ id: worker.id, role: 'worker', phone, federation_id: worker.federation_id });
     return ok(res, { token, worker });
   }
 

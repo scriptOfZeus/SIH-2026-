@@ -8,16 +8,17 @@ const { haversineKm } = require('../utils/distance');
 
 // POST /bookings — customer creates a booking
 router.post('/', requireAuth, requireRole('customer'), async (req, res) => {
-  const { skill_category, service_address, service_lat, service_lng, scheduled_time } = req.body;
+  const { skill_category, service_address, service_lat, service_lng, scheduled_time, federation_id } = req.body;
   if (!skill_category || !service_address || !scheduled_time) {
     return fail(res, 'BAD_REQUEST', 'skill_category, service_address, scheduled_time required');
   }
-  const fed = await db.get('SELECT id FROM federations LIMIT 1');
   const id = uuidv4();
 
   // simple auto-match: nearest approved worker in category, if location given
   let worker_id = null;
   let estimated_distance_km = null;
+  let bookingFederationId = federation_id || null;
+
   if (service_lat && service_lng) {
     const candidates = await db.all(`
       SELECT * FROM workers WHERE skill_category = ? AND verification_status = 'approved'
@@ -29,13 +30,21 @@ router.post('/', requireAuth, requireRole('customer'), async (req, res) => {
     if (withDist[0]) {
       worker_id = withDist[0].id;
       estimated_distance_km = withDist[0].d;
+      // Inherit worker's federation for consistent tenant accountability
+      bookingFederationId = withDist[0].federation_id;
     }
+  }
+
+  // Fallback to designated federation if none matched from worker
+  if (!bookingFederationId) {
+    const fallbackFed = await db.get('SELECT id FROM federations ORDER BY created_at ASC LIMIT 1');
+    bookingFederationId = fallbackFed ? fallbackFed.id : null;
   }
 
   await db.run(`
     INSERT INTO bookings (id, customer_id, worker_id, federation_id, skill_category, service_address, service_lat, service_lng, scheduled_time, estimated_distance_km)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [id, req.user.id, worker_id, fed.id, skill_category, service_address, service_lat, service_lng, scheduled_time, estimated_distance_km]);
+  `, [id, req.user.id, worker_id, bookingFederationId, skill_category, service_address, service_lat, service_lng, scheduled_time, estimated_distance_km]);
 
   const booking = await db.get('SELECT * FROM bookings WHERE id = ?', [id]);
   return ok(res, booking, 201);
@@ -45,6 +54,18 @@ router.post('/', requireAuth, requireRole('customer'), async (req, res) => {
 router.get('/:id', requireAuth, async (req, res) => {
   const booking = await db.get('SELECT * FROM bookings WHERE id = ?', [req.params.id]);
   if (!booking) return fail(res, 'BOOKING_NOT_FOUND', 'Booking does not exist', 404);
+
+  // Tenant scoping & role-based access control
+  if (req.user.role === 'admin' && booking.federation_id !== req.user.federation_id) {
+    return fail(res, 'BOOKING_NOT_FOUND', 'Booking does not exist in your federation', 404);
+  }
+  if (req.user.role === 'customer' && booking.customer_id !== req.user.id) {
+    return fail(res, 'FORBIDDEN', 'Not authorized to view this booking', 403);
+  }
+  if (req.user.role === 'worker' && booking.worker_id !== req.user.id) {
+    return fail(res, 'FORBIDDEN', 'Not authorized to view this booking', 403);
+  }
+
   return ok(res, booking);
 });
 

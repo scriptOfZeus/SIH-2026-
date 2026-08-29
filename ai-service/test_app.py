@@ -5,10 +5,13 @@ Run with:  python -m pytest test_app.py -v
 Requires:  trained models in artifacts/models.pkl (run model.py first)
 """
 
+import json
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
 from app import app
+from model import EVALUATION_PATH, calculate_metrics, evaluate_all
 
 client = TestClient(app)
 
@@ -31,7 +34,28 @@ class TestHealth:
         assert d["model_count"] == 20  # 4 regions × 5 categories
 
 
+# ── /baselines ───────────────────────────────────────────────────────────
+
+class TestBaselines:
+    def test_returns_20_baselines(self):
+        r = client.get("/baselines")
+        assert r.status_code == 200
+        d = r.json()
+        assert d["count"] == 20
+        assert len(d["baselines"]) == 20
+        assert d["data_source"] == "synthetic"
+
+        first = d["baselines"][0]
+        assert "region" in first
+        assert "skill_category" in first
+        assert first["baseline_demand"] > 0
+        assert first["historical_days"] == 393
+        assert first["min_demand"] >= 0
+        assert first["max_demand"] >= first["min_demand"]
+
+
 # ── /predict — valid requests ────────────────────────────────────────────
+
 
 class TestPredictValid:
     def test_single_region_category(self):
@@ -143,3 +167,73 @@ class TestModelLoading:
             assert "type" in entry
             assert entry["type"] in ("prophet", "holt_winters", "moving_average")
             assert "data" in entry
+
+
+# ── model evaluation ─────────────────────────────────────────────────────
+
+class TestModelEvaluation:
+    def test_calculate_metrics_correctness(self):
+        y_true = np.array([10.0, 20.0, 30.0])
+        y_pred = np.array([12.0, 18.0, 33.0])
+        metrics = calculate_metrics(y_true, y_pred)
+
+        # Expected:
+        # MAE = (2 + 2 + 3) / 3 = 2.3333
+        # RMSE = sqrt((4 + 4 + 9) / 3) = sqrt(17/3) = 2.3805
+        # sMAPE = 200 * [2/22 + 2/38 + 3/63] / 3
+        assert metrics["mae"] == 2.3333
+        assert metrics["rmse"] == 2.3805
+        assert metrics["smape_percent"] > 0
+
+    def test_calculate_metrics_perfect_predictions(self):
+        y_true = np.array([15, 25, 35])
+        y_pred = np.array([15, 25, 35])
+        metrics = calculate_metrics(y_true, y_pred)
+        assert metrics["mae"] == 0.0
+        assert metrics["rmse"] == 0.0
+        assert metrics["smape_percent"] == 0.0
+
+    def test_calculate_metrics_empty(self):
+        metrics = calculate_metrics([], [])
+        assert metrics["mae"] == 0.0
+        assert metrics["rmse"] == 0.0
+        assert metrics["smape_percent"] == 0.0
+
+    def test_evaluation_report_file_validity(self):
+        assert EVALUATION_PATH.exists(), f"Missing {EVALUATION_PATH}"
+        with open(EVALUATION_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        assert data["evaluation_strategy"] == "chronological_holdout"
+        assert data["holdout_days"] == 14
+        assert "overall" in data
+        assert "segments" in data
+
+        overall = data["overall"]
+        assert overall["total_models_evaluated"] == 20
+        assert overall["mean_mae"] > 0
+        assert overall["mean_rmse"] > 0
+        assert overall["mean_smape_percent"] > 0
+        assert overall["total_train_observations"] == 20 * (393 - 14)
+        assert overall["total_test_observations"] == 20 * 14
+
+        assert len(data["segments"]) == 20
+        for seg in data["segments"]:
+            assert "region" in seg
+            assert "skill_category" in seg
+            assert seg["train_observations"] == 393 - 14
+            assert seg["test_observations"] == 14
+            assert seg["mae"] >= 0
+            assert seg["rmse"] >= 0
+            assert seg["smape_percent"] >= 0
+
+    def test_evaluate_all_custom_holdout(self, tmp_path):
+        custom_out = tmp_path / "custom_eval.json"
+        report = evaluate_all(test_days=7, output_path=custom_out)
+
+        assert custom_out.exists()
+        assert report["holdout_days"] == 7
+        assert report["overall"]["total_models_evaluated"] == 20
+        assert report["segments"][0]["test_observations"] == 7
+        assert report["segments"][0]["train_observations"] == 393 - 7
+

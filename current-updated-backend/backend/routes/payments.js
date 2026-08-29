@@ -24,9 +24,9 @@ router.post('/initiate', requireAuth, async (req, res) => {
   const mockRazorpayId = 'pay_mock_' + id.slice(0, 8);
 
   await db.run(`
-    INSERT INTO payments (id, booking_id, amount, platform_commission, worker_payout, status, razorpay_payment_id)
-    VALUES (?, ?, ?, ?, ?, 'paid', ?)
-  `, [id, booking_id, amount, commission, payout, mockRazorpayId]);
+    INSERT INTO payments (id, booking_id, federation_id, amount, platform_commission, worker_payout, status, razorpay_payment_id)
+    VALUES (?, ?, ?, ?, ?, ?, 'paid', ?)
+  `, [id, booking_id, booking.federation_id, amount, commission, payout, mockRazorpayId]);
 
   const payment = await db.get('SELECT * FROM payments WHERE id = ?', [id]);
   return ok(res, payment, 201);
@@ -42,6 +42,12 @@ router.post('/webhook', (req, res) => {
 router.get('/:booking_id', requireAuth, async (req, res) => {
   const payment = await db.get('SELECT * FROM payments WHERE booking_id = ?', [req.params.booking_id]);
   if (!payment) return fail(res, 'NOT_FOUND', 'No payment for this booking', 404);
+
+  // Tenant scoping for admins
+  if (req.user.role === 'admin' && payment.federation_id && payment.federation_id !== req.user.federation_id) {
+    return fail(res, 'NOT_FOUND', 'No payment found in your federation', 404);
+  }
+
   return ok(res, payment);
 });
 

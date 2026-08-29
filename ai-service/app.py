@@ -12,7 +12,7 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from model import get_model_type, load_models, predict
+from model import get_historical_baselines, get_model_type, load_models, predict
 
 # ── global model store (loaded once at startup) ─────────────────────────
 models_store = load_models()
@@ -81,6 +81,21 @@ class HealthResponse(BaseModel):
     model_count: int
 
 
+class BaselineItem(BaseModel):
+    region: str
+    skill_category: str
+    baseline_demand: float
+    historical_days: int
+    min_demand: int
+    max_demand: int
+
+
+class BaselinesResponse(BaseModel):
+    baselines: List[BaselineItem]
+    count: int
+    data_source: str
+
+
 # ── endpoints ────────────────────────────────────────────────────────────
 
 @app.get("/health", response_model=HealthResponse)
@@ -91,6 +106,17 @@ def health():
         model_loaded=models_store is not None,
         model_type=get_model_type(),
         model_count=len(models_store) if models_store else 0,
+    )
+
+
+@app.get("/baselines", response_model=BaselinesResponse)
+def get_baselines():
+    """Return historical average demand baselines per region and category."""
+    items = get_historical_baselines()
+    return BaselinesResponse(
+        baselines=items,
+        count=len(items),
+        data_source="synthetic",
     )
 
 
