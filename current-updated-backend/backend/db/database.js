@@ -132,6 +132,9 @@ async function initDb() {
         dispatch_attempts INTEGER DEFAULT 0,
         rejected_worker_ids TEXT DEFAULT '[]',
         emergency_fee REAL DEFAULT 0.0,
+        short_code TEXT UNIQUE,
+        origin_channel TEXT DEFAULT 'web',
+        offline_synced_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
@@ -142,6 +145,7 @@ async function initDb() {
         federation_id TEXT REFERENCES federations(id),
         amount REAL,
         platform_commission REAL,
+        welfare_deduction REAL DEFAULT 0.0,
         worker_payout REAL,
         status TEXT DEFAULT 'pending',
         razorpay_payment_id TEXT,
@@ -155,6 +159,77 @@ async function initDb() {
         rating INTEGER,
         comment TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS sms_logs (
+        id TEXT PRIMARY KEY,
+        direction TEXT NOT NULL,
+        sender_phone TEXT NOT NULL,
+        recipient_phone TEXT NOT NULL,
+        message_body TEXT NOT NULL,
+        booking_id TEXT REFERENCES bookings(id),
+        worker_id TEXT REFERENCES workers(id),
+        federation_id TEXT REFERENCES federations(id),
+        command TEXT,
+        status TEXT DEFAULT 'processed',
+        provider_message_id TEXT UNIQUE,
+        error_message TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS insurance_policies (
+        id TEXT PRIMARY KEY,
+        federation_id TEXT REFERENCES federations(id) NOT NULL,
+        name TEXT NOT NULL,
+        provider_name TEXT NOT NULL,
+        policy_number TEXT,
+        coverage_amount REAL NOT NULL,
+        premium_monthly REAL DEFAULT 0.0,
+        contribution_rate REAL DEFAULT 0.02,
+        status TEXT DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS worker_welfare_enrollments (
+        id TEXT PRIMARY KEY,
+        worker_id TEXT REFERENCES workers(id) NOT NULL,
+        policy_id TEXT REFERENCES insurance_policies(id) NOT NULL,
+        federation_id TEXT REFERENCES federations(id) NOT NULL,
+        status TEXT DEFAULT 'active',
+        total_contributions_accumulated REAL DEFAULT 0.0,
+        enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_contribution_at TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS welfare_contributions (
+        id TEXT PRIMARY KEY,
+        worker_id TEXT REFERENCES workers(id) NOT NULL,
+        booking_id TEXT REFERENCES bookings(id),
+        payment_id TEXT REFERENCES payments(id),
+        federation_id TEXT REFERENCES federations(id) NOT NULL,
+        policy_id TEXT REFERENCES insurance_policies(id),
+        amount REAL NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS welfare_claims (
+        id TEXT PRIMARY KEY,
+        claim_number TEXT UNIQUE NOT NULL,
+        worker_id TEXT REFERENCES workers(id) NOT NULL,
+        policy_id TEXT REFERENCES insurance_policies(id) NOT NULL,
+        federation_id TEXT REFERENCES federations(id) NOT NULL,
+        claim_type TEXT NOT NULL,
+        amount_requested REAL NOT NULL,
+        amount_approved REAL DEFAULT 0.0,
+        incident_date TEXT NOT NULL,
+        description TEXT NOT NULL,
+        evidence_document_url TEXT,
+        status TEXT DEFAULT 'submitted',
+        admin_notes TEXT,
+        adjudicated_by_admin_id TEXT REFERENCES admins(id),
+        adjudicated_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
       CREATE TABLE IF NOT EXISTS demand_forecast_snapshots (
@@ -216,6 +291,91 @@ async function initDb() {
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS rejected_worker_ids TEXT DEFAULT '[]';
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS emergency_fee REAL DEFAULT 0.0;
       CREATE INDEX IF NOT EXISTS idx_bookings_emergency_status ON bookings(is_emergency, status);
+
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS short_code TEXT UNIQUE;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS origin_channel TEXT DEFAULT 'web';
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS offline_synced_at TIMESTAMP;
+      CREATE INDEX IF NOT EXISTS idx_bookings_short_code ON bookings(short_code);
+
+      CREATE TABLE IF NOT EXISTS sms_logs (
+        id TEXT PRIMARY KEY,
+        direction TEXT NOT NULL,
+        sender_phone TEXT NOT NULL,
+        recipient_phone TEXT NOT NULL,
+        message_body TEXT NOT NULL,
+        booking_id TEXT REFERENCES bookings(id),
+        worker_id TEXT REFERENCES workers(id),
+        federation_id TEXT REFERENCES federations(id),
+        command TEXT,
+        status TEXT DEFAULT 'processed',
+        provider_message_id TEXT UNIQUE,
+        error_message TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_sms_logs_provider_msg ON sms_logs(provider_message_id);
+      CREATE INDEX IF NOT EXISTS idx_sms_logs_booking ON sms_logs(booking_id);
+
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS welfare_deduction REAL DEFAULT 0.0;
+
+      CREATE TABLE IF NOT EXISTS insurance_policies (
+        id TEXT PRIMARY KEY,
+        federation_id TEXT REFERENCES federations(id) NOT NULL,
+        name TEXT NOT NULL,
+        provider_name TEXT NOT NULL,
+        policy_number TEXT,
+        coverage_amount REAL NOT NULL,
+        premium_monthly REAL DEFAULT 0.0,
+        contribution_rate REAL DEFAULT 0.02,
+        status TEXT DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_policies_fed ON insurance_policies(federation_id);
+
+      CREATE TABLE IF NOT EXISTS worker_welfare_enrollments (
+        id TEXT PRIMARY KEY,
+        worker_id TEXT REFERENCES workers(id) NOT NULL,
+        policy_id TEXT REFERENCES insurance_policies(id) NOT NULL,
+        federation_id TEXT REFERENCES federations(id) NOT NULL,
+        status TEXT DEFAULT 'active',
+        total_contributions_accumulated REAL DEFAULT 0.0,
+        enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        last_contribution_at TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_enrollments_worker ON worker_welfare_enrollments(worker_id);
+
+      CREATE TABLE IF NOT EXISTS welfare_contributions (
+        id TEXT PRIMARY KEY,
+        worker_id TEXT REFERENCES workers(id) NOT NULL,
+        booking_id TEXT REFERENCES bookings(id),
+        payment_id TEXT REFERENCES payments(id),
+        federation_id TEXT REFERENCES federations(id) NOT NULL,
+        policy_id TEXT REFERENCES insurance_policies(id),
+        amount REAL NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_contributions_worker ON welfare_contributions(worker_id);
+
+      CREATE TABLE IF NOT EXISTS welfare_claims (
+        id TEXT PRIMARY KEY,
+        claim_number TEXT UNIQUE NOT NULL,
+        worker_id TEXT REFERENCES workers(id) NOT NULL,
+        policy_id TEXT REFERENCES insurance_policies(id) NOT NULL,
+        federation_id TEXT REFERENCES federations(id) NOT NULL,
+        claim_type TEXT NOT NULL,
+        amount_requested REAL NOT NULL,
+        amount_approved REAL DEFAULT 0.0,
+        incident_date TEXT NOT NULL,
+        description TEXT NOT NULL,
+        evidence_document_url TEXT,
+        status TEXT DEFAULT 'submitted',
+        admin_notes TEXT,
+        adjudicated_by_admin_id TEXT REFERENCES admins(id),
+        adjudicated_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_claims_fed_status ON welfare_claims(federation_id, status);
+      CREATE INDEX IF NOT EXISTS idx_claims_worker ON welfare_claims(worker_id);
     `);
 
     // Backfill payments.federation_id from bookings if missing
@@ -240,6 +400,22 @@ async function initDb() {
         [uuidv4(), fedId, 'Demo Admin', 'admin@demo.com', bcrypt]
       );
       console.log('✅ Seeded federation + admin (admin@demo.com / admin123)');
+    }
+
+    // Seed safe demo insurance policy for federations if none exists
+    const federations = await db.all('SELECT id, name FROM federations');
+    for (const fed of federations) {
+      const existingPolicy = await db.get('SELECT id FROM insurance_policies WHERE federation_id = ?', [fed.id]);
+      if (!existingPolicy) {
+        const policyId = uuidv4();
+        await db.run(`
+          INSERT INTO insurance_policies (
+            id, federation_id, name, provider_name, policy_number, coverage_amount, premium_monthly, contribution_rate, status
+          )
+          VALUES (?, ?, ?, 'National Cooperative Health Mutual', ?, 200000.0, 50.0, 0.02, 'active')
+        `, [policyId, fed.id, `${fed.name} Health & Accidental Shield`, `POL-${fed.id.slice(0, 6).toUpperCase()}`]);
+        console.log(`✅ Seeded demo insurance policy for ${fed.name}`);
+      }
     }
     
     console.log('✅ Database initialization complete.');

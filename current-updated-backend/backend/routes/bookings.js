@@ -7,6 +7,7 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const { haversineKm } = require('../utils/distance');
 const trackingService = require('../services/trackingService');
 const emergencyService = require('../services/emergencyService');
+const smsService = require('../services/smsService');
 
 // POST /bookings/emergency — customer creates an on-demand emergency booking
 router.post('/emergency', requireAuth, requireRole('customer'), async (req, res) => {
@@ -50,20 +51,33 @@ router.post('/emergency', requireAuth, requireRole('customer'), async (req, res)
   }
 
   const id = uuidv4();
+  const shortCode = smsService.generateShortCode();
   const timeoutSec = Number(timeout_seconds) || 60;
   const fee = (emergency_fee !== undefined && !isNaN(Number(emergency_fee))) ? Number(emergency_fee) : 50.0;
 
   await db.run(`
     INSERT INTO bookings (
       id, customer_id, federation_id, skill_category, service_address, service_lat, service_lng,
-      scheduled_time, is_emergency, emergency_timeout_seconds, emergency_fee, status, rejected_worker_ids
+      scheduled_time, is_emergency, emergency_timeout_seconds, emergency_fee, status, rejected_worker_ids, short_code
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'immediate', 1, ?, ?, 'requested', '[]')
-  `, [id, req.user.id, bookingFederationId, skill_category, service_address, service_lat, service_lng, timeoutSec, fee]);
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'immediate', 1, ?, ?, 'requested', '[]', ?)
+  `, [id, req.user.id, bookingFederationId, skill_category, service_address, service_lat, service_lng, timeoutSec, fee, shortCode]);
 
   // Dispatch immediately to closest eligible candidate
   const dispatchResult = await emergencyService.dispatchEmergencyBooking(id, timeoutSec);
   const updatedBooking = await db.get('SELECT * FROM bookings WHERE id = ?', [id]);
+
+  // Trigger outbound SMS offer to assigned candidate
+  if (dispatchResult && dispatchResult.worker && dispatchResult.worker.phone) {
+    await smsService.sendSms({
+      to: dispatchResult.worker.phone,
+      message: `EMERGENCY GIG: ${skill_category.toUpperCase()} needed at ${service_address} (${dispatchResult.worker.distance_km}km). Pay: Rs ${fee}. Reply ACCEPT ${shortCode} within ${timeoutSec}s or REJECT ${shortCode}`,
+      bookingId: id,
+      workerId: dispatchResult.worker.id,
+      federationId: bookingFederationId,
+      command: 'OFFER',
+    });
+  }
 
   return ok(res, {
     booking: updatedBooking,
@@ -78,6 +92,7 @@ router.post('/', requireAuth, requireRole('customer'), async (req, res) => {
     return fail(res, 'BAD_REQUEST', 'skill_category, service_address, scheduled_time required');
   }
   const id = uuidv4();
+  const shortCode = smsService.generateShortCode();
 
   // simple auto-match: nearest approved worker in category, if location given
   let worker_id = null;
@@ -107,11 +122,27 @@ router.post('/', requireAuth, requireRole('customer'), async (req, res) => {
   }
 
   await db.run(`
-    INSERT INTO bookings (id, customer_id, worker_id, federation_id, skill_category, service_address, service_lat, service_lng, scheduled_time, estimated_distance_km)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [id, req.user.id, worker_id, bookingFederationId, skill_category, service_address, service_lat, service_lng, scheduled_time, estimated_distance_km]);
+    INSERT INTO bookings (id, customer_id, worker_id, federation_id, skill_category, service_address, service_lat, service_lng, scheduled_time, estimated_distance_km, short_code)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [id, req.user.id, worker_id, bookingFederationId, skill_category, service_address, service_lat, service_lng, scheduled_time, estimated_distance_km, shortCode]);
 
   const booking = await db.get('SELECT * FROM bookings WHERE id = ?', [id]);
+
+  // Outbound SMS notification to matched candidate worker
+  if (worker_id) {
+    const worker = await db.get('SELECT phone FROM workers WHERE id = ?', [worker_id]);
+    if (worker && worker.phone) {
+      await smsService.sendSms({
+        to: worker.phone,
+        message: `NEW GIG OFFER: ${skill_category.toUpperCase()} at ${service_address} (${scheduled_time}). Reply ACCEPT ${shortCode} or REJECT ${shortCode}`,
+        bookingId: id,
+        workerId: worker_id,
+        federationId: bookingFederationId,
+        command: 'OFFER',
+      });
+    }
+  }
+
   return ok(res, booking, 201);
 });
 

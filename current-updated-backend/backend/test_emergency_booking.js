@@ -97,8 +97,9 @@ async function main() {
   const serviceLng = 77.2167;
 
   // Cleanup prior test artifacts
+  await db.run("DELETE FROM sms_logs WHERE booking_id IN (SELECT id FROM bookings WHERE service_address LIKE '%New Delhi%' OR service_address LIKE '%Regular Booking Test%' OR service_address LIKE '%Busy Job Address%')");
   await db.run("DELETE FROM bookings WHERE service_address LIKE '%New Delhi%' OR service_address LIKE '%Regular Booking Test%' OR service_address LIKE '%Busy Job Address%'");
-  await db.run("DELETE FROM workers WHERE full_name LIKE 'Plumber%' OR full_name LIKE 'Electrician Near%'");
+  await db.run("DELETE FROM workers WHERE full_name LIKE 'Plumber%' OR full_name LIKE 'Electrician Near%' OR full_name LIKE 'Welfare Worker%'");
 
   // Seed Workers in Federation A (Delhi/Plumbers):
   // Worker W1: 1 km away (closest)
@@ -318,11 +319,15 @@ async function main() {
     emergencyBooking3 = res.body.data.booking;
     assert.strictEqual(emergencyBooking3.worker_id, w1Id, 'Initially assigned to W1');
 
-    console.log('    ⏳ Waiting 2.5s for W1 acceptance timeout...');
-    await sleep(2500);
+    console.log('    ⏳ Waiting for W1 acceptance timeout and reassignment...');
+    let reassigned;
+    for (let i = 0; i < 15; i++) {
+      await sleep(400);
+      reassigned = await db.get('SELECT * FROM bookings WHERE id = ?', [emergencyBooking3.id]);
+      if (reassigned.worker_id && reassigned.worker_id !== w1Id) break;
+    }
 
     // Verify booking automatically reassigned to W2 without manual intervention
-    const reassigned = await db.get('SELECT * FROM bookings WHERE id = ?', [emergencyBooking3.id]);
     assert.strictEqual(reassigned.worker_id, w2Id, 'Timeout must trigger automatic reassignment to W2');
     const rejected = JSON.parse(reassigned.rejected_worker_ids);
     assert(rejected.includes(w1Id), 'Timed out W1 must be permanently excluded');

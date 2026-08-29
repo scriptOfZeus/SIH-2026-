@@ -18,15 +18,63 @@ router.post('/initiate', requireAuth, async (req, res) => {
   const booking = await db.get('SELECT * FROM bookings WHERE id = ?', [booking_id]);
   if (!booking) return fail(res, 'BOOKING_NOT_FOUND', 'Booking does not exist', 404);
 
-  const commission = +(amount * COMMISSION_RATE).toFixed(2);
-  const payout = +(amount - commission).toFixed(2);
+  const numAmount = Number(amount);
+  if (isNaN(numAmount) || numAmount <= 0) {
+    return fail(res, 'BAD_REQUEST', 'Valid positive amount is required');
+  }
+
+  const commission = +(numAmount * COMMISSION_RATE).toFixed(2);
+
+  // Check if worker has active welfare/insurance enrollment
+  let welfareDeduction = 0.0;
+  let activeEnrollment = null;
+
+  if (booking.worker_id) {
+    activeEnrollment = await db.get(`
+      SELECT e.*, p.contribution_rate, p.name as policy_name
+      FROM worker_welfare_enrollments e
+      JOIN insurance_policies p ON e.policy_id = p.id
+      WHERE e.worker_id = ? AND e.status = 'active'
+      LIMIT 1
+    `, [booking.worker_id]);
+
+    if (activeEnrollment && activeEnrollment.contribution_rate > 0) {
+      welfareDeduction = +(numAmount * Number(activeEnrollment.contribution_rate)).toFixed(2);
+    }
+  }
+
+  const payout = +(numAmount - commission - welfareDeduction).toFixed(2);
   const id = uuidv4();
   const mockRazorpayId = 'pay_mock_' + id.slice(0, 8);
 
-  await db.run(`
-    INSERT INTO payments (id, booking_id, federation_id, amount, platform_commission, worker_payout, status, razorpay_payment_id)
-    VALUES (?, ?, ?, ?, ?, ?, 'paid', ?)
-  `, [id, booking_id, booking.federation_id, amount, commission, payout, mockRazorpayId]);
+  // Perform financial updates atomically in one DB transaction
+  await db.exec('BEGIN');
+  try {
+    await db.run(`
+      INSERT INTO payments (id, booking_id, federation_id, amount, platform_commission, welfare_deduction, worker_payout, status, razorpay_payment_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'paid', ?)
+    `, [id, booking_id, booking.federation_id, numAmount, commission, welfareDeduction, payout, mockRazorpayId]);
+
+    if (welfareDeduction > 0 && activeEnrollment) {
+      const contribId = uuidv4();
+      await db.run(`
+        INSERT INTO welfare_contributions (id, worker_id, booking_id, payment_id, federation_id, policy_id, amount)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [contribId, booking.worker_id, booking_id, id, booking.federation_id, activeEnrollment.policy_id, welfareDeduction]);
+
+      await db.run(`
+        UPDATE worker_welfare_enrollments
+        SET total_contributions_accumulated = total_contributions_accumulated + ?,
+            last_contribution_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `, [welfareDeduction, activeEnrollment.id]);
+    }
+
+    await db.exec('COMMIT');
+  } catch (txErr) {
+    await db.exec('ROLLBACK');
+    throw txErr;
+  }
 
   const payment = await db.get('SELECT * FROM payments WHERE id = ?', [id]);
   return ok(res, payment, 201);
