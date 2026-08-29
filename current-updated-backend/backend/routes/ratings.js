@@ -14,6 +14,11 @@ router.post('/', requireAuth, async (req, res) => {
   const booking = await db.get('SELECT * FROM bookings WHERE id = ?', [booking_id]);
   if (!booking) return fail(res, 'BOOKING_NOT_FOUND', 'Booking does not exist', 404);
 
+  // Only participants of the booking can rate
+  if (req.user.id !== booking.customer_id && req.user.id !== booking.worker_id) {
+    return fail(res, 'FORBIDDEN', 'You are not a participant of this booking', 403);
+  }
+
   const rated_by = req.user.role; // 'customer' or 'worker'
   const id = uuidv4();
   await db.run(`

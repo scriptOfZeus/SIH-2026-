@@ -270,8 +270,33 @@ async function initDb() {
       CREATE INDEX IF NOT EXISTS idx_reallocation_fed ON reallocation_alerts(federation_id);
       CREATE INDEX IF NOT EXISTS idx_reallocation_status ON reallocation_alerts(status);
 
+      CREATE TABLE IF NOT EXISTS disputes (
+        id TEXT PRIMARY KEY,
+        dispute_number TEXT UNIQUE NOT NULL,
+        booking_id TEXT REFERENCES bookings(id) NOT NULL,
+        raised_by_id TEXT NOT NULL,
+        raised_by_role TEXT NOT NULL,
+        federation_id TEXT REFERENCES federations(id) NOT NULL,
+        reason TEXT NOT NULL,
+        evidence_document_url TEXT,
+        status TEXT DEFAULT 'raised',
+        resolution_action TEXT DEFAULT 'none',
+        resolution_notes TEXT,
+        refund_amount REAL DEFAULT 0.0,
+        adjudicated_by_admin_id TEXT REFERENCES admins(id),
+        adjudicated_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_disputes_booking ON disputes(booking_id);
+      CREATE INDEX IF NOT EXISTS idx_disputes_fed ON disputes(federation_id);
+
       ALTER TABLE payments ADD COLUMN IF NOT EXISTS federation_id TEXT REFERENCES federations(id);
       CREATE INDEX IF NOT EXISTS idx_payments_fed ON payments(federation_id);
+
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS refund_status TEXT DEFAULT 'none';
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS refunded_amount REAL DEFAULT 0.0;
 
       ALTER TABLE workers ADD COLUMN IF NOT EXISTS certificate_document_url TEXT;
       ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_extracted_number TEXT;

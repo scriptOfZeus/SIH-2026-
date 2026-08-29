@@ -211,6 +211,9 @@ router.get('/welfare/claims/:id', requireAuth, async (req, res) => {
   if (req.user.role === 'admin' && claim.federation_id !== req.user.federation_id) {
     return fail(res, 'NOT_FOUND', 'Claim not found in your federation', 404);
   }
+  if (req.user.role !== 'worker' && req.user.role !== 'admin') {
+    return fail(res, 'FORBIDDEN', 'Not authorized to view claims', 403);
+  }
 
   return ok(res, claim);
 });
@@ -225,6 +228,9 @@ router.get('/welfare/claims/:id/document', requireAuth, async (req, res) => {
   }
   if (req.user.role === 'admin' && claim.federation_id !== req.user.federation_id) {
     return fail(res, 'NOT_FOUND', 'Claim document not found in your federation', 404);
+  }
+  if (req.user.role !== 'worker' && req.user.role !== 'admin') {
+    return fail(res, 'FORBIDDEN', 'Not authorized to view claim documents', 403);
   }
 
   const filePath = resolveClaimPath(claim.evidence_document_url);
@@ -316,6 +322,10 @@ router.patch('/admin/welfare/claims/:id/adjudicate', requireAuth, requireRole('a
 
   const claim = await db.get('SELECT * FROM welfare_claims WHERE id = ? AND federation_id = ?', [req.params.id, req.federationId]);
   if (!claim) return fail(res, 'NOT_FOUND', 'Claim not found in your federation', 404);
+
+  if (claim.status !== 'submitted') {
+    return fail(res, 'ALREADY_ADJUDICATED', `This claim has already been ${claim.status}`, 400);
+  }
 
   let approvedAmount = 0.0;
   if (decision === 'approved') {

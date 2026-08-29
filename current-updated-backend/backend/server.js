@@ -27,6 +27,8 @@ const adminRoutes = require('./routes/admin');
 const trackingRoutes = require('./routes/tracking');
 const smsRoutes = require('./routes/sms');
 const welfareRoutes = require('./routes/welfare');
+const disputeRoutes = require('./routes/disputes');
+const adminDisputeRoutes = require('./routes/adminDisputes');
 
 const BASE = '/api/v1';
 
@@ -40,6 +42,8 @@ app.use(`${BASE}/admin`, adminRoutes);
 app.use(`${BASE}`, trackingRoutes); // provides /bookings/:id/consent-tracking, /location, /tracking, /track-stream
 app.use(`${BASE}/sms`, smsRoutes); // provides /sms/webhook, /sms/logs
 app.use(`${BASE}`, welfareRoutes); // provides /welfare/* and /admin/welfare/* routes
+app.use(`${BASE}/disputes`, disputeRoutes);
+app.use(`${BASE}/admin/disputes`, adminDisputeRoutes);
 
 app.get('/', (req, res) => {
   res.json({ status: 'ok', message: 'Cooperative Gig Platform API - V2 (demo build)', realtime: 'Socket.IO + SSE' });

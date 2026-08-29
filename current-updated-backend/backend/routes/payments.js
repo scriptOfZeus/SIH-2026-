@@ -18,6 +18,10 @@ router.post('/initiate', requireAuth, async (req, res) => {
   const booking = await db.get('SELECT * FROM bookings WHERE id = ?', [booking_id]);
   if (!booking) return fail(res, 'BOOKING_NOT_FOUND', 'Booking does not exist', 404);
 
+  // Prevent duplicate payments for the same booking
+  const existingPayment = await db.get('SELECT id FROM payments WHERE booking_id = ?', [booking_id]);
+  if (existingPayment) return fail(res, 'DUPLICATE_PAYMENT', 'Payment already exists for this booking', 409);
+
   const numAmount = Number(amount);
   if (isNaN(numAmount) || numAmount <= 0) {
     return fail(res, 'BAD_REQUEST', 'Valid positive amount is required');

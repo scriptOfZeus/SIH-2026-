@@ -187,6 +187,11 @@ router.patch('/:id/accept', requireAuth, requireRole('worker'), async (req, res)
     }
   }
 
+  // Standard booking: must be in 'requested' status
+  if (booking.status !== 'requested') {
+    return fail(res, 'INVALID_STATUS', `Cannot accept a booking in '${booking.status}' status`, 400);
+  }
+
   await db.run("UPDATE bookings SET status = 'accepted', updated_at = datetime('now') WHERE id = ?", [req.params.id]);
   const updatedBooking = await db.get('SELECT * FROM bookings WHERE id = ?', [req.params.id]);
   trackingService.initTrackingSession(updatedBooking);
@@ -214,8 +219,8 @@ router.patch('/:id/reject', requireAuth, requireRole('worker'), async (req, res)
   if (booking.service_lat && booking.service_lng) {
     const candidates = await db.all(`
       SELECT * FROM workers WHERE skill_category = ? AND verification_status = 'approved'
-      AND lat IS NOT NULL AND lng IS NOT NULL AND id != ?
-    `, [booking.skill_category, req.user.id]);
+      AND federation_id = ? AND lat IS NOT NULL AND lng IS NOT NULL AND id != ?
+    `, [booking.skill_category, booking.federation_id, req.user.id]);
     const withDist = candidates
       .map(w => ({ ...w, d: haversineKm(booking.service_lat, booking.service_lng, w.lat, w.lng) }))
       .sort((a, b) => a.d - b.d);
@@ -256,6 +261,13 @@ router.patch('/:id/complete', requireAuth, async (req, res) => {
 router.patch('/:id/cancel', requireAuth, async (req, res) => {
   const booking = await db.get('SELECT * FROM bookings WHERE id = ?', [req.params.id]);
   if (!booking) return fail(res, 'BOOKING_NOT_FOUND', 'Booking does not exist', 404);
+
+  // Ownership check: only customer, assigned worker, or federation admin
+  const isCustomer = req.user.role === 'customer' && booking.customer_id === req.user.id;
+  const isWorker = req.user.role === 'worker' && booking.worker_id === req.user.id;
+  const isAdmin = req.user.role === 'admin' && booking.federation_id === req.user.federation_id;
+  if (!isCustomer && !isWorker && !isAdmin) return fail(res, 'FORBIDDEN', 'Not authorized to cancel this booking', 403);
+
   if (booking.status === 'completed') return fail(res, 'ALREADY_COMPLETED', 'Cannot cancel a completed booking', 400);
 
   await db.run("UPDATE bookings SET status = 'cancelled', tracking_active = 0, updated_at = datetime('now') WHERE id = ?", [req.params.id]);

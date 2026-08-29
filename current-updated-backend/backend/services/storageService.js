@@ -5,6 +5,7 @@ const { v4: uuidv4 } = require('uuid');
 // Secure non-public storage directory for worker verification documents
 const CERTIFICATES_STORAGE_DIR = path.resolve(__dirname, '../storage/certificates');
 const CLAIMS_STORAGE_DIR = path.resolve(__dirname, '../storage/claims');
+const DISPUTES_STORAGE_DIR = path.resolve(__dirname, '../storage/disputes');
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -21,6 +22,9 @@ if (!fs.existsSync(CERTIFICATES_STORAGE_DIR)) {
 }
 if (!fs.existsSync(CLAIMS_STORAGE_DIR)) {
   fs.mkdirSync(CLAIMS_STORAGE_DIR, { recursive: true });
+}
+if (!fs.existsSync(DISPUTES_STORAGE_DIR)) {
+  fs.mkdirSync(DISPUTES_STORAGE_DIR, { recursive: true });
 }
 
 class StorageError extends Error {
@@ -149,9 +153,37 @@ function resolveClaimPath(storedFilename) {
   return null;
 }
 
+function saveDisputeEvidence({ buffer, mimeType, disputeId }) {
+  if (!buffer || !Buffer.isBuffer(buffer)) {
+    throw new StorageError('No valid document buffer provided', 'EMPTY_DOCUMENT');
+  }
+  if (buffer.length > MAX_FILE_SIZE_BYTES) {
+    throw new StorageError('File size exceeds the 5MB limit', 'FILE_TOO_LARGE');
+  }
+  const ext = ALLOWED_MIME_TYPES[mimeType];
+  if (!ext) {
+    throw new StorageError(`Unsupported MIME type: ${mimeType}`, 'INVALID_FILE_TYPE');
+  }
+  const safeId = String(disputeId).replace(/[^a-zA-Z0-9_-]/g, '');
+  const storedFilename = `dispute_${safeId}_${uuidv4().split('-')[0]}${ext}`;
+  const targetPath = path.resolve(DISPUTES_STORAGE_DIR, storedFilename);
+  fs.writeFileSync(targetPath, buffer);
+  return { stored_filename: storedFilename, mime_type: mimeType };
+}
+
+function resolveDisputePath(filename) {
+  if (!filename) return null;
+  const safeFilename = path.basename(filename);
+  const resolved = path.resolve(DISPUTES_STORAGE_DIR, safeFilename);
+  if (!resolved.startsWith(DISPUTES_STORAGE_DIR)) return null;
+  if (fs.existsSync(resolved)) return resolved;
+  return null;
+}
+
 module.exports = {
   CERTIFICATES_STORAGE_DIR,
   CLAIMS_STORAGE_DIR,
+  DISPUTES_STORAGE_DIR,
   MAX_FILE_SIZE_BYTES,
   ALLOWED_MIME_TYPES,
   StorageError,
@@ -159,4 +191,6 @@ module.exports = {
   resolveCertificatePath,
   saveClaimDocument,
   resolveClaimPath,
+  saveDisputeEvidence,
+  resolveDisputePath,
 };
