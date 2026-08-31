@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-29T20:04:31.612189+00:00",
+  "generated_at": "2026-08-30T10:41:20.895452+00:00",
   "model_type": "holt_winters",
   "evaluation_strategy": "chronological_holdout",
   "holdout_days": 14,
