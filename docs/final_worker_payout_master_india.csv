@@ -1,0 +1,250 @@
+﻿service_id,category,job_name,pricing_unit,fixed_worker_payout_inr,minimum_quantity,payout_scope,notes
+SVC-001,Cleaning,Basic Room Cleaning,per_room,300,1,Per Room,Base payout; quantity multiplies
+SVC-002,Cleaning,Deep Room Cleaning,per_room,550,1,Per Room,Extra effort; materials separate
+SVC-003,Cleaning,Kitchen Cleaning,per_kitchen,400,1,Per Kitchen,Per kitchen
+SVC-004,Cleaning,Bathroom Cleaning,per_bathroom,300,1,Per Bathroom,Per bathroom
+SVC-005,Cleaning,Sofa Cleaning,per_seat,100,2,Per Seat,Minimum 2 seats
+SVC-006,Cleaning,Mattress Cleaning,per_mattress,300,1,Per Mattress,Per mattress
+SVC-007,Cleaning,Carpet Cleaning,per_100_sqft,300,1,Per 100 Sq Ft,Per 100 sq ft
+SVC-008,Cleaning,Balcony Cleaning,per_balcony,200,1,Per Balcony,Per balcony
+SVC-009,Cleaning,Move-in/Move-out Cleaning,per_room,650,1,Per Room,Per room
+SVC-010,Cleaning,Home Sanitization,per_500_sqft,450,1,Per 500 Sq Ft,Per 500 sq ft
+SVC-011,Plumbing,Tap/Minor Leak Repair,per_job,250,1,Per Job,Basic labour only
+SVC-012,Plumbing,Drain/Sink Unclogging,per_job,300,1,Per Job,Basic labour only
+SVC-013,Plumbing,Toilet Repair,per_job,450,1,Per Job,Parts separate
+SVC-014,Plumbing,Flush Repair,per_job,350,1,Per Job,Parts separate
+SVC-015,Plumbing,Pipe Leak Repair,per_job,500,1,Per Job,Parts separate
+SVC-016,Plumbing,Pipe Replacement,per_job,700,1,Per Job,Parts separate
+SVC-017,Plumbing,Water Tank/Pump Repair,per_job,750,1,Per Job,Parts separate
+SVC-018,Plumbing,Washing Machine Water-Line Setup/Repair,per_job,400,1,Per Job,Parts separate
+SVC-019,Plumbing,Bathroom Fitting Installation,per_item,450,1,Per Item,Per fitting
+SVC-020,Plumbing,Emergency Plumbing Visit,per_visit,450,1,Per Visit,Emergency premium
+SVC-021,Electrical,Switch/Socket Repair,per_point,150,1,Per Point,Per point
+SVC-022,Electrical,Fan Installation,per_fan,300,1,Per Fan,Per fan
+SVC-023,Electrical,Light Installation,per_light,150,1,Per Light,Per light
+SVC-024,Electrical,Fan Capacitor/Regulator Repair,per_fan,250,1,Per Fan,Part separate
+SVC-025,Electrical,Wiring/Circuit Repair,per_job,650,1,Per Job,Material separate
+SVC-026,Electrical,MCB/DB Repair,per_job,650,1,Per Job,Material separate
+SVC-027,Electrical,Washing Machine Electrical Repair,per_job,650,1,Per Job,Diagnosis/repair labour
+SVC-028,Electrical,Cooler Electrical Repair,per_job,500,1,Per Job,Diagnosis/repair labour
+SVC-029,Electrical,Refrigerator Electrical Repair,per_job,800,1,Per Job,Diagnosis/repair labour
+SVC-030,Electrical,Geyser Electrical Repair,per_job,650,1,Per Job,Diagnosis/repair labour
+SVC-031,Electrical,Appliance Electrical Diagnosis,per_appliance,250,1,Per Appliance,Labour/diagnosis
+SVC-032,Electrical,Emergency Electrical Visit,per_visit,450,1,Per Visit,Emergency premium
+SVC-033,Appliance Repair,Washing Machine Repair,per_job,700,1,Per Job,Parts separate
+SVC-034,Appliance Repair,Cooler Repair,per_job,600,1,Per Job,Parts separate
+SVC-035,Appliance Repair,AC Basic Service,per_unit,650,1,Per Unit,Basic labour/service
+SVC-036,Appliance Repair,AC Repair,per_job,900,1,Per Job,Parts/gas separate
+SVC-037,Appliance Repair,Refrigerator Repair,per_job,850,1,Per Job,Parts/gas separate
+SVC-038,Appliance Repair,Microwave Repair,per_job,600,1,Per Job,Parts separate
+SVC-039,Appliance Repair,Geyser Repair,per_job,600,1,Per Job,Parts separate
+SVC-040,Appliance Repair,RO Service,per_unit,350,1,Per Unit,Filter/parts separate
+SVC-041,Appliance Repair,RO Repair,per_job,600,1,Per Job,Parts separate
+SVC-042,Appliance Repair,Water Purifier Repair,per_job,500,1,Per Job,Parts separate
+SVC-043,Carpentry,Furniture Assembly,per_item,500,1,Per Item,Per item
+SVC-044,Carpentry,Door/Lock Adjustment,per_door,300,1,Per Door,Minor adjustment
+SVC-045,Carpentry,Curtain Rod Installation,per_rod,200,1,Per Rod,Per rod
+SVC-046,Carpentry,Minor Furniture Repair,per_item,350,1,Per Item,Parts/material separate
+SVC-047,Carpentry,Major Furniture Repair,per_item,800,1,Per Item,Material separate
+SVC-048,Carpentry,Custom Small Woodwork,per_job,1000,1,Per Job,Quoted within app
+SVC-049,Painting,Single Room Painting,per_room,1000,1,Per Room,Labour; paint separate
+SVC-050,Painting,Wall Touch-up/Repaint,per_100_sqft,300,1,Per 100 Sq Ft,Per 100 sq ft
+SVC-051,Painting,Wall Painting,per_100_sqft,400,1,Per 100 Sq Ft,Labour; paint separate
+SVC-052,Painting,Exterior/Large Area Painting,per_100_sqft,500,1,Per 100 Sq Ft,Labour; paint separate
+SVC-053,Home Care,Elderly Care Visit,per_hour,250,1,Per Hour,Hourly payout
+SVC-054,Home Care,Patient/Care Assistance,per_hour,300,1,Per Hour,Hourly payout
+SVC-055,Home Care,Childcare Assistance,per_hour,250,1,Per Hour,Hourly payout
+SVC-056,Cook,Meal Preparation,per_meal,150,1,Per Meal,Per meal
+SVC-057,Cook,Daily Cooking Visit,per_visit,300,1,Per Visit,Per visit
+SVC-058,Gardening,Garden Maintenance,per_hour,250,1,Per Hour,Hourly payout
+SVC-059,Gardening,Lawn/Garden Cleanup,per_500_sqft,350,1,Per 500 Sq Ft,Per 500 sq ft
+SVC-060,Pest Control,Basic Pest Treatment,per_500_sqft,450,1,Per 500 Sq Ft,Chemical/material separate
+SVC-061,Pest Control,Deep Pest Treatment,per_500_sqft,650,1,Per 500 Sq Ft,Chemical/material separate
+SVC-062,Masonry,Minor Wall/Tile Repair,per_job,400,1,Per Job,Material separate
+SVC-063,Masonry,Major Tile/Floor Repair,per_job,900,1,Per Job,Material separate
+SVC-064,Masonry,Drilling/Wall Mounting,per_point,150,1,Per Point,Per point
+SVC-065,Moving,Loading/Unloading Assistance,per_hour,250,1,Per Hour,Hourly payout
+SVC-066,Moving,Shifting Assistance,per_hour,250,1,Per Hour,Hourly payout
+SVC-067,Moving,Packing Assistance,per_hour,250,1,Per Hour,Hourly payout
+SVC-068,Moving,Furniture Shifting (Heavy Item),per_item,300,1,Per Item,Optional heavy-item premium
+SVC-069,Vehicle Support,Two-Wheeler Basic Check,per_job,200,1,Per Job,Labour only
+SVC-070,Vehicle Support,Car Basic Check,per_job,300,1,Per Job,Labour only
+SVC-071,Pet Care,Pet Walking,per_hour,200,1,Per Hour,Hourly payout
+SVC-072,Pet Care,Pet Grooming Assistance,per_visit,300,1,Per Visit,Basic grooming labour
+SVC-073,Laundry,Clothes Washing Assistance,per_kg,50,1,Per Kg,Per kg labour
+SVC-074,Laundry,Ironing,per_10_items,100,1,Per 10 Items,Per 10 items
+SVC-075,Household Services,Utensils Washing,per_hour,250,1,Per Hour,Basic utensil washing labour
+SVC-076,Household Services,Clothes Washing Assistance,per_kg,50,1,Per Kg,Per kg labour; detergent/material separate
+SVC-077,Household Services,Ironing Clothes,per_10_items,100,1,Per 10 Items,Per 10 items
+SVC-078,Household Services,Grocery/Medicine Pickup,per_trip,200,1,Per Trip,Local pickup/delivery labour
+SVC-079,Household Services,Home Organization Assistance,per_hour,250,1,Per Hour,Sorting/organizing assistance
+SVC-080,Household Services,Window/Glass Cleaning,per_5_windows,300,1,Per 5 Windows,Per 5 windows
+SVC-081,Caregiving,Senior Citizen Care,per_hour,300,1,Per Hour,Non-medical companionship/basic assistance
+SVC-082,Caregiving,Patient Attendant Assistance,per_hour,350,1,Per Hour,Non-medical attendant support
+SVC-083,Caregiving,Child Care Assistance,per_hour,300,1,Per Hour,Basic childcare assistance
+SVC-084,Caregiving,Baby Sitting,per_hour,300,1,Per Hour,Basic babysitting
+SVC-085,Caregiving,Post-Hospital Home Assistance,per_hour,350,1,Per Hour,Non-medical home support
+SVC-086,Caregiving,Mobility Assistance,per_hour,300,1,Per Hour,Walking/companionship assistance
+SVC-087,Security & Watch,Home Watch Visit,per_visit,250,1,Per Visit,House check / watch visit
+SVC-088,Security & Watch,Night Watch Assistance,per_hour,300,1,Per Hour,Basic residential watch support
+SVC-089,Security & Watch,Society/Event Guard Assistance,per_hour,300,1,Per Hour,Non-specialized guard assistance
+SVC-090,Laundry Services,Laundry Pickup & Drop,per_trip,200,1,Per Trip,Local pickup/drop
+SVC-091,Laundry Services,Washing & Drying Assistance,per_kg,50,1,Per Kg,Labour only
+SVC-092,Laundry Services,Folding Clothes,per_10_items,75,1,Per 10 Items,Per 10 items
+SVC-093,Laundry Services,Bed Sheet Washing Assistance,per_set,75,1,Per Set,Per set
+SVC-094,Home Setup,TV Wall Mounting,per_unit,400,1,Per Unit,Mount/bracket material separate
+SVC-095,Home Setup,Shelf Installation,per_shelf,300,1,Per Shelf,Per shelf
+SVC-096,Home Setup,Curtain Installation,per_window,300,1,Per Window,Per window
+SVC-097,Home Setup,Mirror/Picture Hanging,per_item,200,1,Per Item,Per item
+SVC-098,Home Setup,Mosquito Net Installation,per_window,250,1,Per Window,Per window
+SVC-099,Home Setup,Furniture Dismantling,per_item,400,1,Per Item,Per item
+SVC-100,Kitchen Support,Kitchen Helper Visit,per_hour,250,1,Per Hour,Basic kitchen assistance
+SVC-101,Kitchen Support,Utensil Washing,per_hour,250,1,Per Hour,Kitchen cleaning/washing
+SVC-102,Kitchen Support,Vegetable Cutting Assistance,per_hour,250,1,Per Hour,Basic prep assistance
+SVC-103,Kitchen Support,Fridge Cleaning,per_unit,300,1,Per Unit,Per refrigerator
+SVC-104,Errand Services,Bill Payment / Queue Assistance,per_trip,200,1,Per Trip,Local personal assistance
+SVC-105,Errand Services,Parcel Drop/Pickup,per_trip,150,1,Per Trip,Local trip
+SVC-106,Errand Services,Grocery Shopping Assistance,per_trip,200,1,Per Trip,Shopping assistance; goods cost separate
+SVC-107,Errand Services,Pet Supplies Pickup,per_trip,150,1,Per Trip,Local pickup
+SVC-108,Home Maintenance,Drill & Wall Mounting,per_point,150,1,Per Point,Per drilling/mounting point
+SVC-109,Home Maintenance,Drain Cleaning,per_job,400,1,Per Job,Labour only
+SVC-110,Home Maintenance,Water Tank Cleaning,per_1000_litres,700,1,Per 1000 Litres,Per 1000 litre capacity
+SVC-111,Home Maintenance,Basic Door Handle Repair,per_door,200,1,Per Door,Parts separate
+SVC-112,Home Maintenance,Ceiling Fan Cleaning,per_fan,150,1,Per Fan,Cleaning labour
+SVC-113,Cleaning & Housekeeping,Full Kitchen Deep Cleaning,per_kitchen,750,1,Per Kitchen,Labour; materials separate
+SVC-114,Cleaning & Housekeeping,Full Bathroom Deep Cleaning,per_bathroom,500,1,Per Bathroom,Labour; materials separate
+SVC-115,Cleaning & Housekeeping,Toilet Bowl Deep Cleaning,per_toilet,250,1,Per Toilet,Per toilet
+SVC-116,Cleaning & Housekeeping,Window Frame Cleaning,per_window,100,1,Per Window,Per window
+SVC-117,Cleaning & Housekeeping,Grill Cleaning,per_50_sqft,300,1,Per 50 Sq Ft,Per 50 sq ft
+SVC-118,Cleaning & Housekeeping,Ceiling/Dust Removal,per_room,200,1,Per Room,Per room
+SVC-119,Cleaning & Housekeeping,Fan/Exhaust Cleaning,per_unit,150,1,Per Unit,Per unit
+SVC-120,Cleaning & Housekeeping,Fridge Interior Cleaning,per_unit,300,1,Per Unit,Per refrigerator
+SVC-121,Cleaning & Housekeeping,Oven Cleaning,per_unit,300,1,Per Unit,Per oven
+SVC-122,Cooking & Kitchen,Breakfast Preparation,per_meal,150,1,Per Meal,Per meal; groceries separate
+SVC-123,Cooking & Kitchen,Lunch Preparation,per_meal,180,1,Per Meal,Per meal; groceries separate
+SVC-124,Cooking & Kitchen,Dinner Preparation,per_meal,180,1,Per Meal,Per meal; groceries separate
+SVC-125,Cooking & Kitchen,Chapati/Roti Preparation,per_10_rotis,100,1,Per 10 Rotis,Per 10 rotis
+SVC-126,Cooking & Kitchen,Meal Prep for Small Family,per_visit,350,1,Per Visit,Basic home cooking
+SVC-127,Cooking & Kitchen,Kitchen Cleanup After Cooking,per_visit,150,1,Per Visit,Basic cleanup
+SVC-128,Cooking & Kitchen,Dish Washing,per_hour,200,1,Per Hour,Hourly
+SVC-129,Cooking & Kitchen,Vegetable/Ingredient Preparation,per_hour,200,1,Per Hour,Hourly
+SVC-130,Caregiving & Assistance,Elderly Daily Assistance,per_hour,300,1,Per Hour,Non-medical assistance
+SVC-131,Caregiving & Assistance,Elderly Companionship,per_hour,250,1,Per Hour,Companionship
+SVC-132,Caregiving & Assistance,Medicine Pickup Assistance,per_trip,150,1,Per Trip,Medicine cost separate
+SVC-133,Caregiving & Assistance,Doctor Visit Companion,per_visit,500,1,Per Visit,Non-medical support
+SVC-134,Caregiving & Assistance,Hospital Visit Companion,per_visit,600,1,Per Visit,Non-medical support
+SVC-135,Caregiving & Assistance,Child School Pickup,per_trip,180,1,Per Trip,Local pickup
+SVC-136,Caregiving & Assistance,Child School Drop,per_trip,180,1,Per Trip,Local drop
+SVC-137,Caregiving & Assistance,Baby Feeding Assistance,per_hour,250,1,Per Hour,Basic assistance
+SVC-138,Caregiving & Assistance,Wheelchair/Walking Assistance,per_hour,300,1,Per Hour,Non-medical mobility support
+SVC-139,Laundry & Ironing,Washing Machine Loading/Unloading,per_load,100,1,Per Load,Labour only
+SVC-140,Laundry & Ironing,Hand Washing Clothes,per_5kg,250,1,Per 5 Kg,Per 5 kg
+SVC-141,Laundry & Ironing,Bed Sheet Ironing,per_set,75,1,Per Set,Per set
+SVC-142,Laundry & Ironing,Curtain Washing Assistance,per_pair,200,1,Per Pair,Labour only
+SVC-143,Laundry & Ironing,Blanket Cleaning Assistance,per_blanket,200,1,Per Blanket,Labour only
+SVC-144,Plumbing & Sanitary,Tap Installation,per_tap,200,1,Per Tap,Material separate
+SVC-145,Plumbing & Sanitary,Mixer Installation,per_unit,300,1,Per Unit,Material separate
+SVC-146,Plumbing & Sanitary,Basin Installation,per_unit,500,1,Per Unit,Material separate
+SVC-147,Plumbing & Sanitary,Sink Installation,per_unit,500,1,Per Unit,Material separate
+SVC-148,Plumbing & Sanitary,Commode Installation,per_unit,650,1,Per Unit,Material separate
+SVC-149,Plumbing & Sanitary,Shower Installation,per_unit,300,1,Per Unit,Material separate
+SVC-150,Plumbing & Sanitary,Health Faucet Installation,per_unit,200,1,Per Unit,Material separate
+SVC-151,Plumbing & Sanitary,Jet Spray Repair,per_job,200,1,Per Job,Parts separate
+SVC-152,Plumbing & Sanitary,Overhead Tank Valve Repair,per_job,300,1,Per Job,Parts separate
+SVC-153,Electrical & Power,Tube Light Installation,per_light,150,1,Per Light,Per light
+SVC-154,Electrical & Power,LED Panel Installation,per_light,180,1,Per Light,Per light
+SVC-155,Electrical & Power,Chandelier Installation,per_unit,700,1,Per Unit,Ceiling fixture
+SVC-156,Electrical & Power,Inverter Installation,per_unit,700,1,Per Unit,Battery/material separate
+SVC-157,Electrical & Power,Inverter Basic Check,per_unit,350,1,Per Unit,Inspection/service
+SVC-158,Electrical & Power,UPS Installation,per_unit,400,1,Per Unit,Per unit
+SVC-159,Electrical & Power,Doorbell Installation,per_unit,200,1,Per Unit,Material separate
+SVC-160,Electrical & Power,CCTV Basic Installation,per_camera,600,1,Per Camera,Device/cable separate
+SVC-161,Electrical & Power,Earthing Check,per_point,300,1,Per Point,Testing/inspection
+SVC-162,Appliance Repair & Service,Washing Machine Installation,per_unit,450,1,Per Unit,Installation only
+SVC-163,Appliance Repair & Service,Washing Machine Deep Service,per_unit,750,1,Per Unit,Parts separate
+SVC-164,Appliance Repair & Service,Cooler Seasonal Service,per_unit,450,1,Per Unit,Parts separate
+SVC-165,Appliance Repair & Service,AC Indoor Unit Cleaning,per_unit,500,1,Per Unit,Basic cleaning
+SVC-166,Appliance Repair & Service,AC Outdoor Unit Cleaning,per_unit,450,1,Per Unit,Basic cleaning
+SVC-167,Appliance Repair & Service,AC Gas Leak Diagnosis,per_unit,500,1,Per Unit,Gas/refill separate
+SVC-168,Appliance Repair & Service,Geyser Installation,per_unit,550,1,Per Unit,Material separate
+SVC-169,Appliance Repair & Service,Chimney Service,per_unit,500,1,Per Unit,Cleaning/service
+SVC-170,Appliance Repair & Service,Induction Cooktop Repair,per_job,500,1,Per Job,Parts separate
+SVC-171,Appliance Repair & Service,Mixer Grinder Repair,per_job,350,1,Per Job,Parts separate
+SVC-172,Carpentry & Furniture,Bed Assembly,per_item,600,1,Per Item,Per bed
+SVC-173,Carpentry & Furniture,Table Assembly,per_item,350,1,Per Item,Per table
+SVC-174,Carpentry & Furniture,Chair Assembly,per_item,200,1,Per Item,Per chair
+SVC-175,Carpentry & Furniture,Cupboard Assembly,per_item,800,1,Per Item,Per cupboard
+SVC-176,Carpentry & Furniture,Drawer Repair,per_drawer,200,1,Per Drawer,Parts separate
+SVC-177,Carpentry & Furniture,Hinge Replacement,per_hinge,150,1,Per Hinge,Material separate
+SVC-178,Carpentry & Furniture,Bed Repair,per_job,500,1,Per Job,Material separate
+SVC-179,Carpentry & Furniture,Chair Repair,per_item,250,1,Per Item,Material separate
+SVC-180,Carpentry & Furniture,Cabinet Handle Replacement,per_handle,100,1,Per Handle,Per handle
+SVC-181,Carpentry & Furniture,Mosquito Net Frame Repair,per_window,250,1,Per Window,Material separate
+SVC-182,Painting & Wall Work,One Wall Painting,per_wall,400,1,Per Wall,Paint separate
+SVC-183,Painting & Wall Work,Ceiling Painting,per_room,600,1,Per Room,Paint separate
+SVC-184,Painting & Wall Work,Door Painting,per_door,300,1,Per Door,Paint separate
+SVC-185,Painting & Wall Work,Window Painting,per_window,200,1,Per Window,Paint separate
+SVC-186,Painting & Wall Work,Putty Touch-up,per_100_sqft,350,1,Per 100 Sq Ft,Material separate
+SVC-187,Painting & Wall Work,Crack Filling,per_10_ft,200,1,Per 10 Ft,Material separate
+SVC-188,Painting & Wall Work,Small Waterproofing Job,per_100_sqft,600,1,Per 100 Sq Ft,Material separate
+SVC-189,Masonry & Civil,Tile Replacement,per_tile,200,1,Per Tile,Material separate
+SVC-190,Masonry & Civil,Grouting Repair,per_50_sqft,300,1,Per 50 Sq Ft,Material separate
+SVC-191,Masonry & Civil,Wall Crack Repair,per_10_ft,300,1,Per 10 Ft,Material separate
+SVC-192,Masonry & Civil,Minor Cement Repair,per_job,350,1,Per Job,Material separate
+SVC-193,Masonry & Civil,Bathroom Seepage Inspection,per_visit,300,1,Per Visit,Inspection
+SVC-194,Masonry & Civil,Drilling for Wall Fixture,per_point,100,1,Per Point,Per point
+SVC-195,Pest Control,Cockroach Treatment,per_500_sqft,350,1,Per 500 Sq Ft,Chemical/material separate
+SVC-196,Pest Control,Mosquito Treatment,per_500_sqft,400,1,Per 500 Sq Ft,Chemical/material separate
+SVC-197,Pest Control,Ant Treatment,per_500_sqft,350,1,Per 500 Sq Ft,Chemical/material separate
+SVC-198,Pest Control,Bed Bug Treatment,per_500_sqft,800,1,Per 500 Sq Ft,Chemical/material separate
+SVC-199,Pest Control,Termite Inspection,per_visit,400,1,Per Visit,Inspection
+SVC-200,Pest Control,Termite Treatment,per_500_sqft,900,1,Per 500 Sq Ft,Chemical/material separate
+SVC-201,Gardening & Plant Care,Plant Watering Visit,per_visit,200,1,Per Visit,Basic watering
+SVC-202,Gardening & Plant Care,Plant Pruning,per_hour,250,1,Per Hour,Hourly
+SVC-203,Gardening & Plant Care,Plant Repotting,per_plant,100,1,Per Plant,Soil/pot separate
+SVC-204,Gardening & Plant Care,Balcony Garden Setup Assistance,per_visit,450,1,Per Visit,Plants/material separate
+SVC-205,Gardening & Plant Care,Weeding,per_100_sqft,300,1,Per 100 Sq Ft,Per 100 sq ft
+SVC-206,Gardening & Plant Care,Terrace Garden Maintenance,per_hour,300,1,Per Hour,Hourly
+SVC-207,Moving & Packing,Single Appliance Shifting,per_item,250,1,Per Item,Heavy-item premium
+SVC-208,Moving & Packing,Box Packing Assistance,per_box,75,1,Per Box,Per box
+SVC-209,Moving & Packing,Unpacking Assistance,per_box,75,1,Per Box,Per box
+SVC-210,Moving & Packing,Kitchen Packing,per_hour,250,1,Per Hour,Hourly
+SVC-211,Moving & Packing,Furniture Wrapping Assistance,per_item,150,1,Per Item,Material separate
+SVC-212,Moving & Packing,Local Loading Helper,per_hour,250,1,Per Hour,Hourly
+SVC-213,Moving & Packing,Local Unloading Helper,per_hour,250,1,Per Hour,Hourly
+SVC-214,Home Watch & Security Support,Day Home Watch,per_hour,250,1,Per Hour,Basic home watch
+SVC-215,Home Watch & Security Support,Overnight Home Watch,per_hour,300,1,Per Hour,Residential watch
+SVC-216,Home Watch & Security Support,Vacant House Inspection,per_visit,250,1,Per Visit,Inspection visit
+SVC-217,Home Watch & Security Support,Event Crowd Assistance,per_hour,300,1,Per Hour,Non-specialized support
+SVC-218,Errand & Local Assistance,Grocery Shopping,per_trip,200,1,Per Trip,Goods cost separate
+SVC-219,Errand & Local Assistance,Vegetable/Fruit Shopping,per_trip,150,1,Per Trip,Goods cost separate
+SVC-220,Errand & Local Assistance,Courier/Parcel Drop,per_trip,150,1,Per Trip,Local trip
+SVC-221,Errand & Local Assistance,Queue Standing Assistance,per_hour,200,1,Per Hour,Hourly
+SVC-222,Errand & Local Assistance,Utility Bill Assistance,per_trip,150,1,Per Trip,Bill amount separate
+SVC-223,Errand & Local Assistance,Document Pickup/Drop,per_trip,180,1,Per Trip,Local pickup/drop
+SVC-224,Pet Care,Pet Feeding Visit,per_visit,150,1,Per Visit,Basic pet care
+SVC-225,Pet Care,Pet Sitting,per_hour,200,1,Per Hour,Basic sitting
+SVC-226,Pet Care,Pet Bath Assistance,per_pet,250,1,Per Pet,Basic bath labour
+SVC-227,Pet Care,Pet Nail Trimming Assistance,per_pet,120,1,Per Pet,Basic assistance
+SVC-228,Vehicle Cleaning & Basic Support,Two-Wheeler Wash,per_vehicle,200,1,Per Vehicle,Basic wash
+SVC-229,Vehicle Cleaning & Basic Support,Car Exterior Wash,per_vehicle,300,1,Per Vehicle,Basic wash
+SVC-230,Vehicle Cleaning & Basic Support,Car Interior Vacuum/Clean,per_vehicle,350,1,Per Vehicle,Basic cleaning
+SVC-231,Vehicle Cleaning & Basic Support,Bike Puncture Assistance,per_job,150,1,Per Job,External repair cost separate
+SVC-232,Vehicle Cleaning & Basic Support,Battery Jump Start Assistance,per_visit,200,1,Per Visit,Equipment dependent
+SVC-233,Electronics & Home Tech,Wi-Fi Router Setup,per_unit,300,1,Per Unit,Basic setup
+SVC-234,Electronics & Home Tech,Printer Setup,per_unit,300,1,Per Unit,Basic setup
+SVC-235,Electronics & Home Tech,Smart TV Setup,per_unit,350,1,Per Unit,Basic setup
+SVC-236,Electronics & Home Tech,Set-top Box Setup,per_unit,200,1,Per Unit,Basic setup
+SVC-237,Electronics & Home Tech,Computer Basic Setup,per_unit,400,1,Per Unit,Basic setup
+SVC-238,Electronics & Home Tech,CCTV App Setup,per_system,300,1,Per System,Basic configuration
+SVC-239,Personal Home Services,Home Haircut,per_person,250,1,Per Person,Basic service
+SVC-240,Personal Home Services,Basic Hair Styling,per_person,250,1,Per Person,Basic service
+SVC-241,Personal Home Services,Basic Grooming Assistance,per_person,250,1,Per Person,Basic service
+SVC-242,Event & Community Support,Chair/Table Setup,per_20_items,200,1,Per 20 Items,Per 20 items
+SVC-243,Event & Community Support,Event Cleanup,per_hour,250,1,Per Hour,Hourly
+SVC-244,Event & Community Support,Decoration Setup Assistance,per_hour,250,1,Per Hour,Material separate
+SVC-245,Event & Community Support,Society Common-Area Cleanup,per_hour,250,1,Per Hour,Hourly
+SVC-246,General Home Help,Small Household Chores,per_hour,250,1,Per Hour,General helper
+SVC-247,General Home Help,Storage Room Organization,per_hour,250,1,Per Hour,Sorting/organization
+SVC-248,General Home Help,Loft Cleaning Assistance,per_hour,300,1,Per Hour,Basic cleaning
+SVC-249,General Home Help,Basic Home Inspection Visit,per_visit,250,1,Per Visit,Visual inspection only

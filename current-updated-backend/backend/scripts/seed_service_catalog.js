@@ -4,7 +4,7 @@ const { v4: uuidv4 } = require('uuid');
 
 /**
  * Seed Service Catalog from CSV Master
- * Source: docs/final_worker_payout_master_india.csv
+ * Source: SIH-2026-/docs/final_worker_payout_master_india.csv
  * 
  * Financial Interpretation:
  * fixed_worker_payout_inr is the BASE CUSTOMER-FACING SERVICE PRICE.
@@ -14,7 +14,7 @@ async function seedServiceCatalog(db) {
   // Discover CSV path
   const candidatePaths = [
     path.join(__dirname, '..', '..', '..', 'docs', 'final_worker_payout_master_india.csv'),
-    path.join('c:', 'Users', 'ASUS', 'cooperative gig platform', 'docs', 'final_worker_payout_master_india.csv'),
+    path.join('c:', 'Users', 'ASUS', 'cooperative gig platform', 'SIH-2026-', 'docs', 'final_worker_payout_master_india.csv'),
     path.join(__dirname, '..', 'final_worker_payout_master_india.csv'),
   ];
 

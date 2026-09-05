@@ -1,0 +1,52 @@
+# ==========================================
+# Sahkar Sewa - Repository Level .gitignore
+# ==========================================
+
+# 1. Dependencies
+**/node_modules/
+**/.venv/
+**/__pycache__/
+*.pyc
+
+# 2. Build Outputs & Generated Artifacts
+**/dist/
+**/dist-ssr/
+**/.dart_tool/
+**/build/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.widget_preview/
+
+# 3. Environment & Secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# 4. IDE & Editor Metadata
+**/.idea/
+**/*.iml
+**/.vscode/*
+!**/.vscode/extensions.json
+*.swp
+*~
+.DS_Store
+
+# 5. Local Database & Storage
+current-updated-backend/backend/db/*.db
+current-updated-backend/backend/storage/
+ai-service/artifacts/*.pkl
+
+# 6. Local Platform Configurations
+**/android/local.properties
+**/android/.gradle/
+
+# 7. Customer App Temporary Screenshots
+customer-app/android_screen_*.png
+customer-app/e2e/screenshots/
+
+# 8. Logs
+**/logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*

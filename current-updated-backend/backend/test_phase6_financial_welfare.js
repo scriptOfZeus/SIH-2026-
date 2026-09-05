@@ -51,7 +51,7 @@ async function runTests() {
   // Test 1: CSV Validation & Integrity
   // -------------------------------------------------------------
   console.log('--- TEST 1: CSV Validation & Integrity ---');
-  const csvPath = path.resolve(__dirname, '../../../docs/final_worker_payout_master_india.csv');
+  const csvPath = path.resolve(__dirname, '../../docs/final_worker_payout_master_india.csv');
   assert(fs.existsSync(csvPath), `CSV exists at ${csvPath}`);
 
   const rawCsv = fs.readFileSync(csvPath, 'utf-8');
