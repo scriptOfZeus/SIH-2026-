@@ -12,7 +12,14 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from model import get_historical_baselines, get_model_type, load_models, predict
+from model import (
+    detect_anomalies,
+    explain_forecast,
+    get_historical_baselines,
+    get_model_type,
+    load_models,
+    predict,
+)
 
 # ── global model store (loaded once at startup) ─────────────────────────
 models_store = load_models()
@@ -32,8 +39,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="SIH-2026 Demand Forecast Service",
-    description="Serves booking demand predictions for the Cooperative Gig Platform admin dashboard.",
-    version="1.0.0",
+    description="Serves booking demand predictions, explainability, and anomaly detection for the Cooperative Gig Platform admin dashboard.",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -59,11 +66,17 @@ class PredictRequest(BaseModel):
 
 class ForecastItem(BaseModel):
     date: str
+    day_name: Optional[str] = None
     region: str
     skill_category: str
     predicted_demand: int
     lower_bound: int
     upper_bound: int
+    baseline_demand: Optional[float] = None
+    growth_percent: Optional[float] = None
+    classification: Optional[str] = None
+    confidence_score: Optional[float] = None
+    confidence_level: Optional[str] = None
 
 
 class PredictResponse(BaseModel):
@@ -94,6 +107,54 @@ class BaselinesResponse(BaseModel):
     baselines: List[BaselineItem]
     count: int
     data_source: str
+
+
+class ExplainRequest(BaseModel):
+    region: str = Field(..., examples=["Kolkata"])
+    skill_category: str = Field(..., examples=["electrician"])
+    horizon_days: Optional[int] = Field(default=7, ge=1, le=90)
+
+
+class ExplainResponse(BaseModel):
+    region: str
+    skill_category: str
+    baseline_demand: float
+    confidence_score: float
+    confidence_level: str
+    holdout_smape_percent: Optional[float] = None
+    holdout_mae: Optional[float] = None
+    holdout_rmse: Optional[float] = None
+    model_metrics: dict
+    contributing_factors: List[str]
+    summary: str
+
+
+class AnomalyObservation(BaseModel):
+    date: str
+    value: float
+    expected: Optional[float] = None
+
+
+class AnomalyRequest(BaseModel):
+    observations: List[AnomalyObservation]
+    z_threshold: Optional[float] = 2.0
+
+
+class AnomalyItem(BaseModel):
+    date: str
+    observed_value: float
+    expected_baseline: float
+    z_score: float
+    deviation_percent: float
+    anomaly_type: str
+    severity: str
+    description: str
+
+
+class AnomalyResponse(BaseModel):
+    anomalies_detected: bool
+    anomalies_count: int
+    anomalies: List[AnomalyItem]
 
 
 # ── endpoints ────────────────────────────────────────────────────────────
@@ -143,4 +204,24 @@ def predict_demand(req: PredictRequest):
         model=get_model_type(),
         generated_at=datetime.now(timezone.utc).isoformat(),
         data_source="synthetic",
+    )
+
+
+@app.post("/analytics/explain", response_model=ExplainResponse)
+def explain_forecast_endpoint(req: ExplainRequest):
+    """Deconstruct forecast into contributing factors, holdout accuracy, and confidence."""
+    horizon = req.horizon_days if req.horizon_days is not None else 7
+    explanation = explain_forecast(req.region, req.skill_category, horizon)
+    return ExplainResponse(**explanation)
+
+
+@app.post("/analytics/anomalies", response_model=AnomalyResponse)
+def detect_anomalies_endpoint(req: AnomalyRequest):
+    """Statistically detect anomaly spikes/drops across input time-series data."""
+    raw_obs = [obs.model_dump() for obs in req.observations]
+    detected = detect_anomalies(raw_obs)
+    return AnomalyResponse(
+        anomalies_detected=len(detected) > 0,
+        anomalies_count=len(detected),
+        anomalies=detected,
     )

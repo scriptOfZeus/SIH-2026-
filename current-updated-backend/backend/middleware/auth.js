@@ -21,10 +21,18 @@ function requireAuth(req, res, next) {
   }
 }
 
-function requireRole(role) {
+function requireRole(roles) {
+  const allowed = Array.isArray(roles) ? roles : [roles];
   return (req, res, next) => {
-    if (!req.user || req.user.role !== role) {
-      return fail(res, 'FORBIDDEN', `Requires ${role} role`, 403);
+    if (!req.user) {
+      return fail(res, 'UNAUTHORIZED', 'Authentication required', 401);
+    }
+    const userRole = req.user.role;
+    const isMatched = allowed.includes(userRole) ||
+      (allowed.includes('admin') && (userRole === 'supervising_admin' || userRole === 'federation_admin' || userRole === 'admin'));
+
+    if (!isMatched) {
+      return fail(res, 'FORBIDDEN', `Requires one of [${allowed.join(', ')}] role`, 403);
     }
     next();
   };

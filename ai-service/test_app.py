@@ -237,3 +237,86 @@ class TestModelEvaluation:
         assert report["segments"][0]["test_observations"] == 7
         assert report["segments"][0]["train_observations"] == 393 - 7
 
+
+class TestPhase5Extensions:
+    def test_predict_includes_phase5_fields(self):
+        resp = client.post(
+            "/predict",
+            json={"region": "Mumbai", "skill_category": "electrician", "horizon_days": 3},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        forecast = data["forecast"]
+        assert len(forecast) == 3
+        valid_tiers = {"VERY LOW", "LOW", "NORMAL", "HIGH", "VERY HIGH"}
+        for item in forecast:
+            assert "classification" in item
+            assert item["classification"] in valid_tiers
+            assert "confidence_score" in item
+            assert 0.0 <= item["confidence_score"] <= 1.0
+            assert item["confidence_level"] in {"HIGH", "MEDIUM", "LOW"}
+            assert "baseline_demand" in item
+            assert "growth_percent" in item
+
+    def test_explain_endpoint(self):
+        resp = client.post(
+            "/analytics/explain",
+            json={"region": "Mumbai", "skill_category": "electrician", "horizon_days": 7},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["region"] == "Mumbai"
+        assert data["skill_category"] == "electrician"
+        assert data["baseline_demand"] > 0
+        assert len(data["contributing_factors"]) > 0
+        assert "holdout_smape_percent" in data
+        assert len(data["explanation_summary"]) > 0 if "explanation_summary" in data else len(data["summary"]) > 0
+
+    def test_explain_endpoint_all_region(self):
+        resp = client.post(
+            "/analytics/explain",
+            json={"region": "all", "skill_category": "plumber", "horizon_days": 5},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["region"] == "all"
+        assert len(data["contributing_factors"]) > 0
+
+    def test_anomalies_endpoint_with_spike(self):
+        # Normal data around 20, then sudden spike to 120
+        obs = [
+            {"date": f"2026-09-0{i+1}", "value": 20.0 + (i % 3)}
+            for i in range(8)
+        ]
+        obs.append({"date": "2026-09-09", "value": 120.0})
+
+        resp = client.post(
+            "/analytics/anomalies",
+            json={"observations": obs, "z_threshold": 2.0},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["anomalies_detected"] is True
+        assert data["anomalies_count"] >= 1
+        assert len(data["anomalies"]) >= 1
+        spike = data["anomalies"][0]
+        assert spike["date"] == "2026-09-09"
+        assert spike["observed_value"] == 120.0
+        assert spike["anomaly_type"] == "DEMAND_SPIKE"
+        assert spike["severity"] == "CRITICAL"
+
+    def test_anomalies_endpoint_normal_data(self):
+        obs = [
+            {"date": f"2026-09-0{i+1}", "value": 20.0 + (i % 2)}
+            for i in range(7)
+        ]
+        resp = client.post(
+            "/analytics/anomalies",
+            json={"observations": obs, "z_threshold": 2.5},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["anomalies_detected"] is False
+        assert data["anomalies_count"] == 0
+        assert len(data["anomalies"]) == 0
+

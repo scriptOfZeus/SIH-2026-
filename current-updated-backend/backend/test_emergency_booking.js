@@ -65,7 +65,7 @@ async function main() {
   // Admin A (Pilot Federation)
   const loginAdminA = await api('/auth/admin/login', {
     method: 'POST',
-    body: JSON.stringify({ email: 'admin@demo.com', password: 'admin123' }),
+    body: JSON.stringify({ email: 'fedadmin@demo.com', password: 'admin123' }),
   });
   assert.strictEqual(loginAdminA.status, 200);
   const tokenAdminA = loginAdminA.body.data.token;

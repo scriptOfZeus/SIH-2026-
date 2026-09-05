@@ -23,17 +23,23 @@ const { saveClaimDocument, resolveClaimPath, StorageError } = require('../servic
 // WORKER ENDPOINTS
 // ═══════════════════════════════════════════════════════════════════════════
 
-// GET /api/v1/welfare/policies — Browse available policies for worker's federation
+// GET /api/v1/welfare/policies — Browse available policies for worker's federation or national mutual
 router.get('/welfare/policies', requireAuth, requireRole('worker'), async (req, res) => {
-  if (!req.user.federation_id) {
-    return fail(res, 'TENANT_REQUIRED', 'Worker does not have an assigned federation', 400);
+  let targetFedId = req.user.federation_id;
+  if (!targetFedId) {
+    const pilotFed = await db.get("SELECT id FROM federations WHERE code = 'PILOT-FED' OR name = 'Pilot Federation' LIMIT 1");
+    targetFedId = pilotFed ? pilotFed.id : null;
+  }
+
+  if (!targetFedId) {
+    return fail(res, 'TENANT_REQUIRED', 'No active cooperative welfare schemes found', 400);
   }
 
   const policies = await db.all(`
     SELECT * FROM insurance_policies
     WHERE federation_id = ? AND status = 'active'
     ORDER BY created_at DESC
-  `, [req.user.federation_id]);
+  `, [targetFedId]);
 
   return ok(res, policies);
 });
@@ -53,8 +59,8 @@ router.post('/welfare/enroll', requireAuth, requireRole('worker'), async (req, r
   const policy = await db.get('SELECT * FROM insurance_policies WHERE id = ?', [policy_id]);
   if (!policy) return fail(res, 'POLICY_NOT_FOUND', 'Insurance policy not found', 404);
 
-  // Federation isolation: policy must belong to worker's federation
-  if (policy.federation_id !== worker.federation_id) {
+  // Federation isolation: policy must belong to worker's federation (or worker is independent)
+  if (worker.federation_id && policy.federation_id !== worker.federation_id) {
     return fail(res, 'FORBIDDEN_TENANT', 'Policy does not belong to your cooperative federation', 403);
   }
 
@@ -72,14 +78,14 @@ router.post('/welfare/enroll', requireAuth, requireRole('worker'), async (req, r
   await db.run(`
     INSERT INTO worker_welfare_enrollments (id, worker_id, policy_id, federation_id, status, total_contributions_accumulated)
     VALUES (?, ?, ?, ?, 'active', 0.0)
-  `, [id, worker.id, policy_id, worker.federation_id]);
+  `, [id, worker.id, policy_id, worker.federation_id || policy.federation_id]);
 
   const enrollment = await db.get('SELECT * FROM worker_welfare_enrollments WHERE id = ?', [id]);
   return ok(res, enrollment, 201);
 });
 
-// GET /welfare/my-enrollment — Worker views active enrollment & accumulated contributions
-router.get('/welfare/my-enrollment', requireAuth, requireRole('worker'), async (req, res) => {
+// GET /welfare/my-enrollment and /welfare/my-enrollments — Worker views active enrollment & accumulated contributions
+router.get(['/welfare/my-enrollment', '/welfare/my-enrollments'], requireAuth, requireRole('worker'), async (req, res) => {
   const enrollments = await db.all(`
     SELECT e.*, p.name as policy_name, p.provider_name, p.coverage_amount, p.contribution_rate
     FROM worker_welfare_enrollments e

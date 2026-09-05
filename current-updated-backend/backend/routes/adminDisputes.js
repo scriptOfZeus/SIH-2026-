@@ -5,46 +5,64 @@ const { ok, fail } = require('../utils/response');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { requireTenant } = require('../middleware/tenant');
 const { getSocketIO } = require('../services/trackingService');
+const payoutService = require('../services/payoutService');
 
 // GET /api/v1/admin/disputes
 router.get('/', requireAuth, requireRole('admin'), requireTenant, async (req, res) => {
-  const disputes = await db.all(`
-    SELECT * FROM disputes WHERE federation_id = ? ORDER BY created_at DESC
-  `, [req.federationId]);
+  let query = 'SELECT * FROM disputes WHERE 1=1';
+  const params = [];
+  if (req.federationId) {
+    query += ' AND federation_id = ?';
+    params.push(req.federationId);
+  }
+  query += ' ORDER BY created_at DESC';
+  const disputes = await db.all(query, params);
   return ok(res, disputes);
 });
 
 // GET /api/v1/admin/disputes/summary
 router.get('/summary', requireAuth, requireRole('admin'), requireTenant, async (req, res) => {
-  const summary = await db.all(`
-    SELECT status, COUNT(*) as count 
-    FROM disputes 
-    WHERE federation_id = ? 
-    GROUP BY status
-  `, [req.federationId]);
+  let query = 'SELECT status, COUNT(*) as count FROM disputes WHERE 1=1';
+  let refundQuery = "SELECT COALESCE(SUM(refund_amount), 0) as total_refunded FROM disputes WHERE resolution_action = 'refund'";
+  const params = [];
+  if (req.federationId) {
+    query += ' AND federation_id = ?';
+    refundQuery += ' AND federation_id = ?';
+    params.push(req.federationId);
+  }
+  query += ' GROUP BY status';
   
-  const refundRes = await db.get(`
-    SELECT COALESCE(SUM(refund_amount), 0) as total_refunded
-    FROM disputes 
-    WHERE federation_id = ? AND resolution_action = 'refund'
-  `, [req.federationId]);
+  const summary = await db.all(query, params);
+  const refundRes = await db.get(refundQuery, params);
 
   return ok(res, {
     status_counts: summary,
-    total_refunded: refundRes.total_refunded
+    total_refunded: refundRes ? refundRes.total_refunded : 0
   });
 });
 
 // GET /api/v1/admin/disputes/:id
 router.get('/:id', requireAuth, requireRole('admin'), requireTenant, async (req, res) => {
-  const dispute = await db.get('SELECT * FROM disputes WHERE id = ? AND federation_id = ?', [req.params.id, req.federationId]);
+  let query = 'SELECT * FROM disputes WHERE id = ?';
+  const params = [req.params.id];
+  if (req.federationId) {
+    query += ' AND federation_id = ?';
+    params.push(req.federationId);
+  }
+  const dispute = await db.get(query, params);
   if (!dispute) return fail(res, 'NOT_FOUND', 'Dispute not found in your federation', 404);
   return ok(res, dispute);
 });
 
 // PATCH /api/v1/admin/disputes/:id/review
 router.patch('/:id/review', requireAuth, requireRole('admin'), requireTenant, async (req, res) => {
-  const dispute = await db.get('SELECT * FROM disputes WHERE id = ? AND federation_id = ?', [req.params.id, req.federationId]);
+  let disputeQuery = 'SELECT * FROM disputes WHERE id = ?';
+  const disputeParams = [req.params.id];
+  if (req.federationId) {
+    disputeQuery += ' AND federation_id = ?';
+    disputeParams.push(req.federationId);
+  }
+  const dispute = await db.get(disputeQuery, disputeParams);
   if (!dispute) return fail(res, 'NOT_FOUND', 'Dispute not found in your federation', 404);
 
   if (dispute.status !== 'raised') {
@@ -66,7 +84,13 @@ router.patch('/:id/resolve', requireAuth, requireRole('admin'), requireTenant, a
     return fail(res, 'BAD_REQUEST', 'Invalid resolution_action');
   }
 
-  const dispute = await db.get('SELECT * FROM disputes WHERE id = ? AND federation_id = ?', [req.params.id, req.federationId]);
+  let disputeQuery = 'SELECT * FROM disputes WHERE id = ?';
+  const disputeParams = [req.params.id];
+  if (req.federationId) {
+    disputeQuery += ' AND federation_id = ?';
+    disputeParams.push(req.federationId);
+  }
+  const dispute = await db.get(disputeQuery, disputeParams);
   if (!dispute) return fail(res, 'NOT_FOUND', 'Dispute not found in your federation', 404);
 
   if (dispute.status === 'resolved' || dispute.status === 'dismissed') {
@@ -105,6 +129,17 @@ router.patch('/:id/resolve', requireAuth, requireRole('admin'), requireTenant, a
         SET refund_status = ?, refunded_amount = ? 
         WHERE id = ?
       `, [newRefundStatus, newRefundedTotal, payment.id]);
+
+      // Record auditable reversal into payment_ledger
+      await payoutService.createRefundReversal({
+        bookingId: dispute.booking_id,
+        paymentId: payment.id,
+        refundAmount: finalRefundAmount,
+        reason: `dispute_refund_${dispute.id}`,
+        adminId: req.user.id,
+        idempotencyKey: `disp_ref_${dispute.id}`,
+        db,
+      });
     } else if (resolution_action === 'warning') {
       if (booking.worker_id) {
         await db.run(`

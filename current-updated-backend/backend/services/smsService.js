@@ -40,7 +40,7 @@ function normalizePhone(phone) {
  * Generates an unguessable 6-character alphanumeric short code (e.g. BK4821)
  */
 function generateShortCode() {
-  const num = Math.floor(1000 + Math.random() * 9000);
+  const num = Math.floor(100000 + Math.random() * 900000);
   return `BK${num}`;
 }
 

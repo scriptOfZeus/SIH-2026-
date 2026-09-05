@@ -4,75 +4,93 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('../db/database');
 const { ok, fail } = require('../utils/response');
 const { requireAuth } = require('../middleware/auth');
+const payoutService = require('../services/payoutService');
 
-const COMMISSION_RATE = 0.15; // 15% platform commission, adjust as needed
-
-// POST /payments/initiate — creates a payment record.
-// Real version would call Razorpay's order API here and return an order_id
-// for the client SDK to open the checkout. For demo speed, we mark it paid
-// immediately — swap this block for a real Razorpay call later.
+// POST /payments/initiate — creates and verifies payment with server-authoritative split
 router.post('/initiate', requireAuth, async (req, res) => {
-  const { booking_id, amount } = req.body;
-  if (!booking_id || !amount) return fail(res, 'BAD_REQUEST', 'booking_id and amount required');
+  const { booking_id, amount, razorpay_payment_id, idempotency_key } = req.body;
+  if (!booking_id) return fail(res, 'BAD_REQUEST', 'booking_id is required');
 
   const booking = await db.get('SELECT * FROM bookings WHERE id = ?', [booking_id]);
   if (!booking) return fail(res, 'BOOKING_NOT_FOUND', 'Booking does not exist', 404);
 
   // Prevent duplicate payments for the same booking
-  const existingPayment = await db.get('SELECT id FROM payments WHERE booking_id = ?', [booking_id]);
-  if (existingPayment) return fail(res, 'DUPLICATE_PAYMENT', 'Payment already exists for this booking', 409);
+  const existingPayment = await db.get('SELECT * FROM payments WHERE booking_id = ?', [booking_id]);
+  if (existingPayment) {
+    if (idempotency_key && existingPayment.idempotency_key === idempotency_key) {
+      return ok(res, existingPayment, 200);
+    }
+    return fail(res, 'DUPLICATE_PAYMENT', 'Payment already exists for this booking', 409);
+  }
 
-  const numAmount = Number(amount);
-  if (isNaN(numAmount) || numAmount <= 0) {
+  // Authoritative amount from booking snapshot if present, else validated body amount
+  const authoritativeGross = (booking.gross_amount && Number(booking.gross_amount) > 0)
+    ? Number(booking.gross_amount)
+    : Number(amount);
+
+  if (isNaN(authoritativeGross) || authoritativeGross <= 0) {
     return fail(res, 'BAD_REQUEST', 'Valid positive amount is required');
   }
 
-  const commission = +(numAmount * COMMISSION_RATE).toFixed(2);
-
-  // Check if worker has active welfare/insurance enrollment
-  let welfareDeduction = 0.0;
-  let activeEnrollment = null;
+  // Determine worker type and federation
+  let workerType = 'independent';
+  let federationId = booking.federation_id || null;
 
   if (booking.worker_id) {
-    activeEnrollment = await db.get(`
-      SELECT e.*, p.contribution_rate, p.name as policy_name
-      FROM worker_welfare_enrollments e
-      JOIN insurance_policies p ON e.policy_id = p.id
-      WHERE e.worker_id = ? AND e.status = 'active'
-      LIMIT 1
-    `, [booking.worker_id]);
-
-    if (activeEnrollment && activeEnrollment.contribution_rate > 0) {
-      welfareDeduction = +(numAmount * Number(activeEnrollment.contribution_rate)).toFixed(2);
+    const worker = await db.get('SELECT id, federation_id, worker_type FROM workers WHERE id = ?', [booking.worker_id]);
+    if (worker) {
+      federationId = worker.federation_id || null;
+      workerType = (federationId !== null && worker.worker_type !== 'independent') ? 'federation' : 'independent';
     }
   }
 
-  const payout = +(numAmount - commission - welfareDeduction).toFixed(2);
-  const id = uuidv4();
-  const mockRazorpayId = 'pay_mock_' + id.slice(0, 8);
+  const baseUnitPricePaise = booking.service_unit_price_paise || Math.round(authoritativeGross * 100);
+  const quantity = booking.quantity || 1;
+  const minQty = booking.minimum_quantity || 1;
 
-  // Perform financial updates atomically in one DB transaction
+  const financials = payoutService.calculateBookingFinancials({
+    baseUnitPricePaise,
+    quantity,
+    minimumQuantity: minQty,
+    workerType,
+  });
+
+  const paymentId = uuidv4();
+  const effectiveIdempotencyKey = idempotency_key || `pay_${paymentId}`;
+  const mockRazorpayId = razorpay_payment_id || ('pay_' + paymentId.replace(/-/g, '').slice(0, 14));
+
   await db.exec('BEGIN');
   try {
     await db.run(`
-      INSERT INTO payments (id, booking_id, federation_id, amount, platform_commission, welfare_deduction, worker_payout, status, razorpay_payment_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'paid', ?)
-    `, [id, booking_id, booking.federation_id, numAmount, commission, welfareDeduction, payout, mockRazorpayId]);
+      INSERT INTO payments (
+        id, booking_id, federation_id, amount, platform_commission,
+        welfare_deduction, worker_payout, federation_share,
+        worker_type, amount_paise, worker_payout_paise, insurance_deduction_paise,
+        federation_share_paise, platform_commission_paise,
+        status, split_status, razorpay_payment_id, idempotency_key
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paid', 'pending', ?, ?)
+    `, [
+      paymentId,
+      booking_id,
+      federationId,
+      financials.gross_amount,
+      financials.platform_fee,
+      financials.insurance_share,
+      financials.worker_share,
+      financials.federation_share,
+      financials.worker_type,
+      financials.gross_amount_paise,
+      financials.worker_share_paise,
+      financials.insurance_share_paise,
+      financials.federation_share_paise,
+      financials.platform_fee_paise,
+      mockRazorpayId,
+      effectiveIdempotencyKey,
+    ]);
 
-    if (welfareDeduction > 0 && activeEnrollment) {
-      const contribId = uuidv4();
-      await db.run(`
-        INSERT INTO welfare_contributions (id, worker_id, booking_id, payment_id, federation_id, policy_id, amount)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-      `, [contribId, booking.worker_id, booking_id, id, booking.federation_id, activeEnrollment.policy_id, welfareDeduction]);
-
-      await db.run(`
-        UPDATE worker_welfare_enrollments
-        SET total_contributions_accumulated = total_contributions_accumulated + ?,
-            last_contribution_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `, [welfareDeduction, activeEnrollment.id]);
-    }
+    // Update booking status
+    await db.run("UPDATE bookings SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", [booking_id]);
 
     await db.exec('COMMIT');
   } catch (txErr) {
@@ -80,27 +98,144 @@ router.post('/initiate', requireAuth, async (req, res) => {
     throw txErr;
   }
 
-  const payment = await db.get('SELECT * FROM payments WHERE id = ?', [id]);
-  return ok(res, payment, 201);
+  // Allocate to ledger and welfare contributions idempotently
+  let allocationResult;
+  try {
+    allocationResult = await payoutService.allocateBookingPayment({
+      bookingId: booking_id,
+      paymentId: paymentId,
+      idempotencyKey: `alloc_${paymentId}`,
+      db,
+    });
+  } catch (allocErr) {
+    console.warn('⚠️ Non-fatal payout allocation warning:', allocErr.message);
+  }
+
+  const payment = await db.get('SELECT * FROM payments WHERE id = ?', [paymentId]);
+  return ok(res, {
+    ...payment,
+    financials,
+    ledger_entry: allocationResult?.entry || null,
+  }, 201);
 });
 
-// POST /payments/webhook — placeholder for real Razorpay webhook signature verification later
-router.post('/webhook', (req, res) => {
-  // In production: verify Razorpay signature header, update payment.status from the event payload.
-  return ok(res, { received: true });
+// POST /payments/webhook — Idempotent Razorpay Webhook Handler
+router.post('/webhook', async (req, res) => {
+  const payload = req.body || {};
+  const event = payload.event || 'payment.captured';
+  const paymentEntity = payload.payload?.payment?.entity || payload;
+  const razorpayPaymentId = paymentEntity.id || payload.razorpay_payment_id;
+  const bookingId = paymentEntity.notes?.booking_id || payload.booking_id;
+
+  if (!razorpayPaymentId && !bookingId) {
+    return ok(res, { received: true, note: 'Empty webhook payload acknowledged' });
+  }
+
+  let payment = null;
+  if (razorpayPaymentId) {
+    payment = await db.get('SELECT * FROM payments WHERE razorpay_payment_id = ?', [razorpayPaymentId]);
+  }
+  if (!payment && bookingId) {
+    payment = await db.get('SELECT * FROM payments WHERE booking_id = ?', [bookingId]);
+  }
+
+  if (payment) {
+    // Idempotent allocation
+    const webhookKey = `wh_${razorpayPaymentId || payment.id}_${event}`;
+    try {
+      const result = await payoutService.allocateBookingPayment({
+        bookingId: payment.booking_id,
+        paymentId: payment.id,
+        idempotencyKey: webhookKey,
+        db,
+      });
+      return ok(res, { received: true, status: 'processed', duplicate: result.isDuplicate });
+    } catch (err) {
+      console.warn('⚠️ Webhook allocation warning:', err.message);
+      return ok(res, { received: true, status: 'error', error: err.message });
+    }
+  }
+
+  return ok(res, { received: true, note: 'Payment record not yet indexed' });
 });
 
-// GET /payments/:booking_id
+// GET /payments/:booking_id — Fetch payment & financial breakdown
 router.get('/:booking_id', requireAuth, async (req, res) => {
   const payment = await db.get('SELECT * FROM payments WHERE booking_id = ?', [req.params.booking_id]);
   if (!payment) return fail(res, 'NOT_FOUND', 'No payment for this booking', 404);
 
-  // Tenant scoping for admins
-  if (req.user.role === 'admin' && payment.federation_id && payment.federation_id !== req.user.federation_id) {
-    return fail(res, 'NOT_FOUND', 'No payment found in your federation', 404);
+  // Tenant scoping for federation admins
+  if (req.user.role === 'admin' || req.user.role === 'federation_admin') {
+    if (payment.federation_id && req.user.federation_id && payment.federation_id !== req.user.federation_id) {
+      return fail(res, 'FORBIDDEN', 'No payment found in your federation', 403);
+    }
   }
 
-  return ok(res, payment);
+  // Fetch associated ledger entry
+  const ledger = await db.get('SELECT * FROM payment_ledger WHERE payment_id = ? AND transaction_type = ?', [payment.id, 'payment']);
+
+  return ok(res, {
+    ...payment,
+    ledger: ledger || null,
+  });
+});
+
+// POST /payments/:booking_id/refund — Process refund and auditable reversal
+router.post('/:booking_id/refund', requireAuth, async (req, res) => {
+  const { amount, reason } = req.body;
+  const payment = await db.get('SELECT * FROM payments WHERE booking_id = ?', [req.params.booking_id]);
+  if (!payment) return fail(res, 'NOT_FOUND', 'Payment not found for this booking', 404);
+
+  // Authorization check: only admin or customer can initiate refund
+  if (req.user.role === 'worker') {
+    return fail(res, 'FORBIDDEN', 'Workers cannot initiate refunds', 403);
+  }
+  if ((req.user.role === 'admin' || req.user.role === 'federation_admin') && payment.federation_id && payment.federation_id !== req.user.federation_id) {
+    return fail(res, 'FORBIDDEN', 'Payment does not belong to your federation', 403);
+  }
+
+  const refundAmount = amount !== undefined ? Number(amount) : payment.amount;
+  if (isNaN(refundAmount) || refundAmount <= 0) {
+    return fail(res, 'BAD_REQUEST', 'Valid positive refund amount required', 400);
+  }
+
+  const refundable = payment.amount - (payment.refunded_amount || 0.0);
+  if (refundAmount > refundable) {
+    return fail(res, 'EXCEEDS_REFUNDABLE', `Refund amount (${refundAmount}) exceeds refundable balance (${refundable})`, 400);
+  }
+
+  const idempotencyKey = req.body.idempotency_key || `ref_${payment.id}_${Math.round(refundAmount * 100)}`;
+
+  try {
+    const reversalResult = await payoutService.createRefundReversal({
+      bookingId: req.params.booking_id,
+      paymentId: payment.id,
+      refundAmount,
+      reason: reason || 'customer_refund',
+      adminId: req.user.id,
+      idempotencyKey,
+      db,
+    });
+
+    const newRefundedTotal = (payment.refunded_amount || 0.0) + refundAmount;
+    const newRefundStatus = newRefundedTotal >= payment.amount ? 'full' : 'partial';
+
+    await db.run(`
+      UPDATE payments
+      SET refund_status = ?, refunded_amount = ?
+      WHERE id = ?
+    `, [newRefundStatus, newRefundedTotal, payment.id]);
+
+    return ok(res, {
+      success: true,
+      refunded_amount: refundAmount,
+      refund_status: newRefundStatus,
+      reversal_entry: reversalResult.entry,
+      is_duplicate: reversalResult.isDuplicate,
+    });
+  } catch (err) {
+    return fail(res, 'REFUND_ERROR', err.message, 500);
+  }
 });
 
 module.exports = router;

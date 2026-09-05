@@ -29,6 +29,7 @@ const smsRoutes = require('./routes/sms');
 const welfareRoutes = require('./routes/welfare');
 const disputeRoutes = require('./routes/disputes');
 const adminDisputeRoutes = require('./routes/adminDisputes');
+const serviceRoutes = require('./routes/services');
 
 const BASE = '/api/v1';
 
@@ -44,9 +45,10 @@ app.use(`${BASE}/sms`, smsRoutes); // provides /sms/webhook, /sms/logs
 app.use(`${BASE}`, welfareRoutes); // provides /welfare/* and /admin/welfare/* routes
 app.use(`${BASE}/disputes`, disputeRoutes);
 app.use(`${BASE}/admin/disputes`, adminDisputeRoutes);
+app.use(`${BASE}/services`, serviceRoutes);
 
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', message: 'Cooperative Gig Platform API - V2 (demo build)', realtime: 'Socket.IO + SSE' });
+  res.json({ status: 'ok', message: 'Sahkar Sewa API - V2 (demo build)', realtime: 'Socket.IO + SSE' });
 });
 
 const PORT = process.env.PORT || 5000;
@@ -54,6 +56,14 @@ server.listen(PORT, () => {
   console.log(`\n🚀 Server running at http://localhost:${PORT}`);
   console.log(`   API base: http://localhost:${PORT}${BASE}`);
   console.log(`   Admin login: admin@demo.com / admin123\n`);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[SERVER UNCAUGHT EXCEPTION]', err.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[SERVER UNHANDLED REJECTION]', reason);
 });
 
 module.exports = { app, server, io };

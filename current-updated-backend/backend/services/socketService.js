@@ -61,8 +61,12 @@ function initSocketServer(httpServer) {
         if (socket.user.role === 'worker' && booking.worker_id !== socket.user.id) {
           return callback({ success: false, error: 'Unauthorized' });
         }
-        if (socket.user.role === 'admin' && booking.federation_id !== socket.user.federation_id) {
-          return callback({ success: false, error: 'Unauthorized' });
+        if (socket.user.role === 'supervising_admin') {
+          // Allowed global access
+        } else if (socket.user.role === 'admin' || socket.user.role === 'federation_admin') {
+          if (booking.federation_id && socket.user.federation_id && booking.federation_id !== socket.user.federation_id) {
+            return callback({ success: false, error: 'Unauthorized' });
+          }
         }
         socket.join(`booking:${bookingId}`);
         callback({ success: true, booking_id: bookingId });
@@ -100,8 +104,10 @@ function initSocketServer(httpServer) {
           if (booking.worker_id !== socket.user.id) {
             return callback({ success: false, error: 'Worker not assigned to this booking', code: 'FORBIDDEN' });
           }
-        } else if (socket.user.role === 'admin') {
-          if (booking.federation_id !== socket.user.federation_id) {
+        } else if (socket.user.role === 'supervising_admin') {
+          // Allowed global access
+        } else if (socket.user.role === 'admin' || socket.user.role === 'federation_admin') {
+          if (booking.federation_id && socket.user.federation_id && booking.federation_id !== socket.user.federation_id) {
             return callback({ success: false, error: 'Cross-federation access denied', code: 'FORBIDDEN' });
           }
         } else {

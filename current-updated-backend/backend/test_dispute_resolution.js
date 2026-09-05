@@ -333,6 +333,7 @@ async function runTests() {
 
   // Cleanup
   await db.run('DELETE FROM disputes WHERE raised_by_id IN (?, ?)', [customerId, workerId]);
+  await db.run('DELETE FROM payment_ledger WHERE booking_id IN (?, ?, ?, ?)', [bookingId, b2, b3, b4]);
   await db.run('DELETE FROM payments WHERE booking_id IN (?, ?, ?, ?)', [bookingId, b2, b3, b4]);
   await db.run('DELETE FROM bookings WHERE customer_id = ?', [customerId]);
   await db.run('DELETE FROM workers WHERE id = ?', [workerId]);

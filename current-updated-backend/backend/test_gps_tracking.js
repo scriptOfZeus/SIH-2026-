@@ -62,16 +62,24 @@ async function main() {
   // ── 0. Environment & Actor Setup ──────────────────────────────────────────
   console.log('0. Setting Up Actors & Authentications:');
 
-  // 0a. Admin A (Pilot Federation)
+  // 0a. Admin A (Pilot Federation Admin)
   const loginAdminA = await api('/auth/admin/login', {
     method: 'POST',
-    body: JSON.stringify({ email: 'admin@demo.com', password: 'admin123' }),
+    body: JSON.stringify({ email: 'fedadmin@demo.com', password: 'admin123' }),
   });
   assert.strictEqual(loginAdminA.status, 200);
   const tokenAdminA = loginAdminA.body.data.token;
   const fedA = (await api('/admin/federations/current', { headers: { Authorization: `Bearer ${tokenAdminA}` } })).body.data;
 
-  // 0b. Admin B (Maharashtra Federation)
+  // 0a-2. Supervising Admin (Global Access)
+  const loginSuper = await api('/auth/admin/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'admin@demo.com', password: 'admin123' }),
+  });
+  assert.strictEqual(loginSuper.status, 200);
+  const tokenSuperAdmin = loginSuper.body.data.token;
+
+  // 0b. Admin B (Maharashtra Federation Admin)
   const loginAdminB = await api('/auth/admin/login', {
     method: 'POST',
     body: JSON.stringify({ email: 'admin@maharashtra.coop', password: 'mahaPassword123' }),
@@ -292,6 +300,15 @@ async function main() {
   await test('Home Federation Admin A can inspect active tracking for Booking 1 (200)', async () => {
     const res = await api(`/bookings/${booking1Id}/tracking`, {
       headers: { Authorization: `Bearer ${tokenAdminA}` },
+    });
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.data.booking_id, booking1Id);
+    assert(res.body.data.latest_location !== null);
+  });
+
+  await test('Supervising Admin can inspect active tracking across any federation (200)', async () => {
+    const res = await api(`/bookings/${booking1Id}/tracking`, {
+      headers: { Authorization: `Bearer ${tokenSuperAdmin}` },
     });
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.body.data.booking_id, booking1Id);

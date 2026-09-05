@@ -157,8 +157,8 @@ async function recordLocationUpdate(bookingId, workerId, { lat, lng, heading = 0
   session.last_update_timestamp = now;
   session.latest_location = locationPayload;
 
-  // 5. Update worker record in database with latest known location
-  await db.run('UPDATE workers SET lat = ?, lng = ? WHERE id = ?', [numLat, numLng, workerId]);
+  // 5. Update worker record in database with latest known location and timestamp
+  await db.run('UPDATE workers SET lat = ?, lng = ?, last_location_updated_at = CURRENT_TIMESTAMP WHERE id = ?', [numLat, numLng, workerId]);
 
   // 6. Broadcast to Socket.IO room if attached
   if (ioInstance) {

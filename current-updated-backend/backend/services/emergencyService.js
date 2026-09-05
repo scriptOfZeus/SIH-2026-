@@ -46,6 +46,8 @@ function checkCustomerSpam(customerId) {
   customerLastEmergencyTime.set(customerId, now);
 }
 
+const GPS_STALE_THRESHOLD_MINUTES = Number(process.env.GPS_STALE_THRESHOLD_MINUTES) || 120; // 2 hours
+
 /**
  * Candidate Discovery:
  * Finds the nearest approved worker who:
@@ -54,6 +56,7 @@ function checkCustomerSpam(customerId) {
  * 3. Is approved and has coordinates
  * 4. Is NOT currently engaged in an active accepted booking
  * 5. Has NOT already timed out or rejected this specific booking
+ * 6. Prefers workers with fresh GPS coordinates (updated within threshold)
  */
 async function findNextEmergencyWorker({ serviceLat, serviceLng, skillCategory, federationId, rejectedWorkerIds = [] }) {
   if (!serviceLat || !serviceLng || !skillCategory || !federationId) {
@@ -66,6 +69,7 @@ async function findNextEmergencyWorker({ serviceLat, serviceLng, skillCategory, 
     WHERE skill_category = ?
       AND federation_id = ?
       AND verification_status = 'approved'
+      AND COALESCE(is_available, 1) = 1
       AND lat IS NOT NULL AND lng IS NOT NULL
       AND id NOT IN (
         SELECT worker_id FROM bookings
@@ -78,10 +82,23 @@ async function findNextEmergencyWorker({ serviceLat, serviceLng, skillCategory, 
 
   if (eligible.length === 0) return null;
 
-  // Rank by Haversine distance (closest first)
+  const nowMs = Date.now();
+  const staleThresholdMs = GPS_STALE_THRESHOLD_MINUTES * 60 * 1000;
+
+  // Rank by Freshness then Haversine distance (closest fresh worker first)
   const ranked = eligible
-    .map(w => ({ ...w, distance_km: +haversineKm(serviceLat, serviceLng, w.lat, w.lng).toFixed(2) }))
-    .sort((a, b) => a.distance_km - b.distance_km);
+    .map(w => {
+      const dist = +haversineKm(serviceLat, serviceLng, w.lat, w.lng).toFixed(2);
+      const lastUpdatedMs = w.last_location_updated_at ? new Date(w.last_location_updated_at).getTime() : 0;
+      const isStale = lastUpdatedMs > 0 ? (nowMs - lastUpdatedMs > staleThresholdMs) : false;
+      return { ...w, distance_km: dist, is_stale: isStale };
+    })
+    .sort((a, b) => {
+      if (a.is_stale !== b.is_stale) {
+        return a.is_stale ? 1 : -1; // Fresh workers prioritized
+      }
+      return a.distance_km - b.distance_km;
+    });
 
   return ranked[0] || null;
 }

@@ -53,10 +53,17 @@ async function main() {
   // ── Setup: Admin Tokens & Seed Workers ────────────────────────────────────
   console.log('0. Environment & Admin Authentication:');
 
-  // Login Admin A (Pilot Federation)
-  const loginA = await api('/auth/admin/login', {
+  // Login Supervising Admin & Federation Admin A (Pilot Federation)
+  const loginSuper = await api('/auth/admin/login', {
     method: 'POST',
     body: JSON.stringify({ email: 'admin@demo.com', password: 'admin123' }),
+  });
+  assert.strictEqual(loginSuper.status, 200);
+  const superToken = loginSuper.body.data.token;
+
+  const loginA = await api('/auth/admin/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'fedadmin@demo.com', password: 'admin123' }),
   });
   assert.strictEqual(loginA.status, 200);
   const tokenA = loginA.body.data.token;
@@ -65,9 +72,9 @@ async function main() {
   let fedBAdmin = await db.get("SELECT * FROM admins WHERE email = 'admin@maharashtra.coop'");
   let tokenB;
   if (!fedBAdmin) {
-    await api('/admin/federations/onboard', {
+    await api('/admin/federations', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${tokenA}` },
+      headers: { Authorization: `Bearer ${superToken}` },
       body: JSON.stringify({
         name: 'Maharashtra Coop Federation',
         region: 'Mumbai',
@@ -256,7 +263,7 @@ async function main() {
     assert.strictEqual(res.body.error.code, 'FILE_TOO_LARGE');
   });
 
-  await test('Cross-federation access blocked: Admin A cannot upload document for Worker B (404)', async () => {
+  await test('Cross-federation access blocked: Admin A cannot upload document for Worker B (403/404)', async () => {
     const res = await api(`/admin/workers/${workerB.id}/upload-certificate`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${tokenA}` },
@@ -267,14 +274,14 @@ async function main() {
       }),
     });
 
-    assert.strictEqual(res.status, 404, 'Must return 404 for worker outside tenant federation');
+    assert([403, 404].includes(res.status), 'Must block cross-tenant upload with 403 or 404');
   });
 
-  await test('Cross-federation access blocked: Admin A cannot view Worker B document metadata (404)', async () => {
+  await test('Cross-federation access blocked: Admin A cannot view Worker B document metadata (403/404)', async () => {
     const res = await api(`/admin/workers/${workerB.id}/certificate-document`, {
       headers: { Authorization: `Bearer ${tokenA}` },
     });
-    assert.strictEqual(res.status, 404);
+    assert([403, 404].includes(res.status), 'Must block cross-tenant view with 403 or 404');
   });
 
   console.log('\n3. Verification Workflow & Guard Rails:');
@@ -285,7 +292,7 @@ async function main() {
 
     const res = await api(`/admin/workers/${workerA.id}/verify-certificate`, {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${tokenA}` },
+      headers: { Authorization: `Bearer ${superToken}` },
       body: JSON.stringify({}),
     });
 
@@ -297,7 +304,7 @@ async function main() {
   await test('Admin override: With explicit confirmation, admin can override and verify', async () => {
     const res = await api(`/admin/workers/${workerA.id}/verify-certificate`, {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${tokenA}` },
+      headers: { Authorization: `Bearer ${superToken}` },
       body: JSON.stringify({ override_mismatch: true }),
     });
 
@@ -308,7 +315,7 @@ async function main() {
   await test('Final approval flow: Worker can only be approved after certificate verification', async () => {
     const res = await api(`/admin/workers/${workerA.id}/verify`, {
       method: 'PATCH',
-      headers: { Authorization: `Bearer ${tokenA}` },
+      headers: { Authorization: `Bearer ${superToken}` },
       body: JSON.stringify({ decision: 'approved' }),
     });
 

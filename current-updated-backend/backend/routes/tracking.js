@@ -81,8 +81,10 @@ router.get('/bookings/:id/tracking', requireAuth, async (req, res) => {
   }
 
   // Role & Tenant Authorization
-  if (req.user.role === 'admin') {
-    if (booking.federation_id !== req.user.federation_id) {
+  if (req.user.role === 'supervising_admin') {
+    // Supervising Admin has global operational access across all federations
+  } else if (req.user.role === 'admin' || req.user.role === 'federation_admin') {
+    if (booking.federation_id && req.user.federation_id && booking.federation_id !== req.user.federation_id) {
       return fail(res, 'BOOKING_NOT_FOUND', 'Booking does not exist in your federation', 404);
     }
   } else if (req.user.role === 'customer') {
@@ -135,18 +137,22 @@ router.get('/bookings/:id/track-stream', requireAuth, async (req, res) => {
   }
 
   // Authorization Check
-  if (req.user.role === 'customer') {
+  if (req.user.role === 'supervising_admin') {
+    // Supervising Admin allowed global access
+  } else if (req.user.role === 'customer') {
     if (booking.customer_id !== req.user.id) {
       return fail(res, 'FORBIDDEN', 'Not your booking', 403);
     }
-  } else if (req.user.role === 'admin') {
-    if (booking.federation_id !== req.user.federation_id) {
+  } else if (req.user.role === 'admin' || req.user.role === 'federation_admin') {
+    if (booking.federation_id && req.user.federation_id && booking.federation_id !== req.user.federation_id) {
       return fail(res, 'BOOKING_NOT_FOUND', 'Cross-federation access denied', 404);
     }
   } else if (req.user.role === 'worker') {
     if (booking.worker_id !== req.user.id) {
       return fail(res, 'FORBIDDEN', 'Not assigned worker', 403);
     }
+  } else {
+    return fail(res, 'FORBIDDEN', 'Unauthorized role', 403);
   }
 
   if (booking.status !== 'accepted') {

@@ -237,17 +237,174 @@ def predict(models: dict, region=None, skill_category=None, horizon_days: int = 
                 df_fc = _predict_moving_average(data, horizon_days)
 
             for _, row in df_fc.iterrows():
+                dt = pd.to_datetime(row["ds"])
+                pred_val = int(row["yhat"])
+                lower_val = int(row["yhat_lower"])
+                upper_val = int(row["yhat_upper"])
+
+                # Phase 5 Enrichment: Baseline, Growth, Classification, Confidence
+                base_dict = _get_baseline_map()
+                base_val = base_dict.get((r, cat), float(pred_val))
+                growth = round(((pred_val - base_val) / base_val) * 100.0, 1) if base_val > 0 else 0.0
+                classification = classify_demand(pred_val, base_val)
+                conf_score, conf_level = compute_confidence(horizon_days, len(forecasts) % horizon_days)
+
                 forecasts.append({
-                    "date": pd.to_datetime(row["ds"]).strftime("%Y-%m-%d"),
+                    "date": dt.strftime("%Y-%m-%d"),
+                    "day_name": dt.strftime("%A"),
                     "region": r,
                     "skill_category": cat,
-                    "predicted_demand": int(row["yhat"]),
-                    "lower_bound": int(row["yhat_lower"]),
-                    "upper_bound": int(row["yhat_upper"]),
+                    "predicted_demand": pred_val,
+                    "lower_bound": lower_val,
+                    "upper_bound": upper_val,
+                    "baseline_demand": round(base_val, 1),
+                    "growth_percent": growth,
+                    "classification": classification,
+                    "confidence_score": conf_score,
+                    "confidence_level": conf_level,
                 })
         except Exception as exc:
             logging.warning("Prediction failed for (%s, %s): %s", r, cat, exc)
     return forecasts
+
+
+# Cached baseline map for fast lookups
+_BASELINE_CACHE = None
+
+def _get_baseline_map() -> dict:
+    global _BASELINE_CACHE
+    if _BASELINE_CACHE is None:
+        baselines = get_historical_baselines()
+        _BASELINE_CACHE = {(b["region"], b["skill_category"]): b["baseline_demand"] for b in baselines}
+    return _BASELINE_CACHE
+
+
+def classify_demand(predicted: int, baseline: float) -> str:
+    """Classify predicted demand against historical baseline into 5 operational tiers."""
+    if baseline <= 0:
+        return "NORMAL"
+    growth = ((predicted - baseline) / baseline) * 100.0
+    if growth >= 50.0:
+        return "VERY HIGH"
+    elif growth >= 25.0:
+        return "HIGH"
+    elif growth >= 10.0:
+        return "NORMAL"
+    elif growth >= -25.0:
+        return "LOW"
+    else:
+        return "VERY LOW"
+
+
+def compute_confidence(horizon_days: int, day_offset: int, smape: float = 12.62) -> tuple:
+    """
+    Compute normalized forecast confidence (0.0 to 1.0) derived from holdout sMAPE error,
+    sample density, and horizon distance penalty.
+    """
+    # Base confidence derived from holdout accuracy (sMAPE=12.6% -> ~0.91 base)
+    base = max(0.60, 1.0 - (smape / 140.0))
+    # Horizon decay: max 8% degradation over 30 days
+    horizon_factor = max(1, horizon_days)
+    decay = (day_offset / horizon_factor) * 0.08
+    score = round(max(0.50, min(0.96, base - decay)), 2)
+    if score >= 0.85:
+        level = "HIGH"
+    elif score >= 0.70:
+        level = "MEDIUM"
+    else:
+        level = "LOW"
+    return score, level
+
+
+def explain_forecast(region: str, skill_category: str, horizon_days: int = 7) -> dict:
+    """
+    Deconstruct the forecast into human-interpretable factors: baseline, day-of-week pattern,
+    expected trend, confidence intervals, and actionable explanation notes.
+    """
+    base_map = _get_baseline_map()
+    baseline = base_map.get((region, skill_category), 20.0)
+
+    # Load holdout metrics for the segment if available
+    smape = 12.62
+    mae = 1.76
+    rmse = 2.25
+    if EVALUATION_PATH.exists():
+        try:
+            with open(EVALUATION_PATH, "r", encoding="utf-8") as f:
+                eval_data = json.load(f)
+                for seg in eval_data.get("segments", []):
+                    if seg.get("region") == region and seg.get("skill_category") == skill_category:
+                        smape = seg.get("smape_percent", smape)
+                        mae = seg.get("mae", mae)
+                        rmse = seg.get("rmse", rmse)
+                        break
+        except Exception:
+            pass
+
+    score, level = compute_confidence(horizon_days, 0, smape)
+
+    factors = [
+        f"Historical volume baseline for {skill_category} in {region} averages {baseline:.1f} bookings/day.",
+        f"Model holdout accuracy achieves {100.0 - smape:.1f}% fit (sMAPE: {smape:.2f}%, RMSE: {rmse:.2f}).",
+        f"Time-series decomposition reflects 7-day weekly recurrence with weekend/weekday variance.",
+        f"Forecast confidence is rated {level} ({int(score * 100)}%) over a {horizon_days}-day horizon.",
+    ]
+
+    return {
+        "region": region,
+        "skill_category": skill_category,
+        "baseline_demand": baseline,
+        "confidence_score": score,
+        "confidence_level": level,
+        "holdout_smape_percent": round(smape, 2),
+        "holdout_mae": round(mae, 2),
+        "holdout_rmse": round(rmse, 2),
+        "model_metrics": {
+            "smape_percent": round(smape, 2),
+            "mae": round(mae, 2),
+            "rmse": round(rmse, 2),
+        },
+        "contributing_factors": factors,
+        "summary": f"Demand for {skill_category} in {region} is calibrated to baseline {baseline:.1f} with {level.lower()} confidence.",
+    }
+
+
+def detect_anomalies(observations: list) -> list:
+    """
+    Statistically detect anomalies across historical or observed series using z-score
+    and rolling deviation thresholds.
+    Each item in observations is expected to be a dict with: date, value, expected/baseline (optional).
+    """
+    if not observations or len(observations) < 3:
+        return []
+
+    vals = [float(o.get("value", 0)) for o in observations]
+    mean_val = float(np.mean(vals))
+    std_val = float(np.std(vals))
+    if std_val <= 0:
+        std_val = max(1.0, mean_val * 0.15)
+
+    anomalies = []
+    for obs in observations:
+        val = float(obs.get("value", 0))
+        z = (val - mean_val) / std_val
+        expected = float(obs.get("expected") if obs.get("expected") is not None else mean_val)
+        dev_percent = round(((val - expected) / max(1.0, expected)) * 100.0, 1)
+
+        if abs(z) >= 2.0 or abs(dev_percent) >= 50.0:
+            severity = "CRITICAL" if (abs(z) >= 2.5 or abs(dev_percent) >= 100.0) else "WARNING"
+            anom_type = "DEMAND_SPIKE" if (z > 0 or dev_percent > 0) else "DEMAND_DROP"
+            anomalies.append({
+                "date": obs.get("date", "unknown"),
+                "observed_value": val,
+                "expected_baseline": round(expected, 1),
+                "z_score": round(float(z), 2),
+                "deviation_percent": dev_percent,
+                "anomaly_type": anom_type,
+                "severity": severity,
+                "description": f"{anom_type.replace('_', ' ').capitalize()} of {val} jobs ({dev_percent:+.1f}% vs baseline {expected:.1f}, z={z:.2f}).",
+            })
+    return anomalies
 
 
 def get_historical_baselines(data_path: Path = None) -> list:

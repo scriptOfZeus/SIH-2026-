@@ -18,6 +18,10 @@ function formatSql(sql) {
   return formatted;
 }
 
+pool.on('error', (err) => {
+  console.error('[PG POOL ERROR]', err.message);
+});
+
 const db = {
   pool,
   
@@ -97,6 +101,7 @@ async function initDb() {
         ocr_extracted_name TEXT,
         ocr_confidence_score REAL,
         ocr_status TEXT DEFAULT 'pending',
+        is_available INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -122,6 +127,8 @@ async function initDb() {
         service_lat REAL,
         service_lng REAL,
         estimated_distance_km REAL,
+        parts_fee REAL DEFAULT 0.0,
+        service_notes TEXT,
         completed_by_customer INTEGER DEFAULT 0,
         completed_by_worker INTEGER DEFAULT 0,
         tracking_consent_given INTEGER DEFAULT 0,
@@ -301,10 +308,23 @@ async function initDb() {
       ALTER TABLE workers ADD COLUMN IF NOT EXISTS certificate_document_url TEXT;
       ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_extracted_number TEXT;
       ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_extracted_name TEXT;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_job_role TEXT;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_qualification_code TEXT;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_training_location TEXT;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_grade TEXT;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_nsqf_level TEXT;
       ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_confidence_score REAL;
       ALTER TABLE workers ADD COLUMN IF NOT EXISTS ocr_status TEXT DEFAULT 'pending';
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS is_available INTEGER DEFAULT 1;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS hourly_rate REAL DEFAULT 450.0;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS experience_years INTEGER DEFAULT 1;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS address TEXT;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS pincode TEXT;
       CREATE INDEX IF NOT EXISTS idx_workers_ocr_status ON workers(ocr_status);
+      CREATE INDEX IF NOT EXISTS idx_workers_is_available ON workers(is_available);
 
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS parts_fee REAL DEFAULT 0.0;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_notes TEXT;
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS tracking_consent_given INTEGER DEFAULT 0;
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS tracking_consent_at TIMESTAMP;
       ALTER TABLE bookings ADD COLUMN IF NOT EXISTS tracking_active INTEGER DEFAULT 0;
@@ -401,6 +421,130 @@ async function initDb() {
       );
       CREATE INDEX IF NOT EXISTS idx_claims_fed_status ON welfare_claims(federation_id, status);
       CREATE INDEX IF NOT EXISTS idx_claims_worker ON welfare_claims(worker_id);
+
+      -- Phase 2.5 Multi-Federation & Admin Role Enhancements
+      ALTER TABLE federations ADD COLUMN IF NOT EXISTS code TEXT;
+      ALTER TABLE federations ADD COLUMN IF NOT EXISTS description TEXT;
+      ALTER TABLE federations ADD COLUMN IF NOT EXISTS location TEXT;
+      ALTER TABLE federations ADD COLUMN IF NOT EXISTS contact_phone TEXT;
+      ALTER TABLE federations ADD COLUMN IF NOT EXISTS contact_email TEXT;
+      ALTER TABLE federations ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+      ALTER TABLE federations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_federations_code ON federations(code);
+
+      ALTER TABLE admins ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'federation_admin';
+      ALTER TABLE admins ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+      CREATE INDEX IF NOT EXISTS idx_admins_role ON admins(role);
+
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS worker_type TEXT DEFAULT 'federation';
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS final_verification_status TEXT DEFAULT 'pending';
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS final_adjudicated_by_admin_id TEXT;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS final_adjudication_notes TEXT;
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS final_adjudicated_at TIMESTAMP;
+      CREATE INDEX IF NOT EXISTS idx_workers_worker_type ON workers(worker_type);
+      CREATE INDEX IF NOT EXISTS idx_workers_final_verification ON workers(final_verification_status);
+
+      CREATE TABLE IF NOT EXISTS federation_forecasts (
+        id TEXT PRIMARY KEY,
+        federation_id TEXT REFERENCES federations(id) NOT NULL,
+        skill_category TEXT NOT NULL,
+        region TEXT,
+        forecast_date TEXT NOT NULL,
+        day_name TEXT NOT NULL,
+        predicted_demand INTEGER NOT NULL,
+        lower_bound INTEGER DEFAULT 0,
+        upper_bound INTEGER DEFAULT 0,
+        published_by_admin_id TEXT REFERENCES admins(id),
+        status TEXT DEFAULT 'published',
+        generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        published_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_fed_forecasts_fed ON federation_forecasts(federation_id);
+      CREATE INDEX IF NOT EXISTS idx_fed_forecasts_date ON federation_forecasts(forecast_date);
+
+      -- Phase 3 Location & Telemetry Enhancements
+      ALTER TABLE workers ADD COLUMN IF NOT EXISTS last_location_updated_at TIMESTAMP;
+      CREATE INDEX IF NOT EXISTS idx_workers_lat_lng_avail ON workers (lat, lng, is_available, verification_status);
+      CREATE INDEX IF NOT EXISTS idx_workers_last_loc_time ON workers (last_location_updated_at);
+      CREATE INDEX IF NOT EXISTS idx_bookings_service_coords ON bookings (service_lat, service_lng);
+
+      -- Phase 6 Service Pricing, Financial Ledger, and Welfare Payout Architecture
+      CREATE TABLE IF NOT EXISTS service_catalog (
+        id TEXT PRIMARY KEY,
+        service_id TEXT UNIQUE NOT NULL,
+        category TEXT NOT NULL,
+        job_name TEXT NOT NULL,
+        pricing_unit TEXT NOT NULL,
+        base_price_inr REAL NOT NULL,
+        base_price_paise INTEGER NOT NULL,
+        minimum_quantity INTEGER DEFAULT 1,
+        payout_scope TEXT,
+        notes TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_services_id ON service_catalog(service_id);
+      CREATE INDEX IF NOT EXISTS idx_services_category ON service_catalog(category);
+      CREATE INDEX IF NOT EXISTS idx_services_active ON service_catalog(is_active);
+
+      CREATE TABLE IF NOT EXISTS payment_ledger (
+        id TEXT PRIMARY KEY,
+        booking_id TEXT REFERENCES bookings(id),
+        payment_id TEXT REFERENCES payments(id),
+        worker_id TEXT REFERENCES workers(id),
+        federation_id TEXT REFERENCES federations(id),
+        worker_type TEXT NOT NULL,
+        gross_amount_paise INTEGER NOT NULL,
+        worker_amount_paise INTEGER NOT NULL,
+        insurance_amount_paise INTEGER NOT NULL,
+        federation_amount_paise INTEGER NOT NULL,
+        platform_amount_paise INTEGER NOT NULL,
+        gross_amount REAL NOT NULL,
+        worker_amount REAL NOT NULL,
+        insurance_amount REAL NOT NULL,
+        federation_amount REAL NOT NULL,
+        platform_amount REAL NOT NULL,
+        currency TEXT DEFAULT 'INR',
+        transaction_type TEXT DEFAULT 'payment',
+        status TEXT DEFAULT 'paid',
+        reconciled INTEGER DEFAULT 1,
+        idempotency_key TEXT UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_ledger_booking ON payment_ledger(booking_id);
+      CREATE INDEX IF NOT EXISTS idx_ledger_payment ON payment_ledger(payment_id);
+      CREATE INDEX IF NOT EXISTS idx_ledger_worker ON payment_ledger(worker_id);
+      CREATE INDEX IF NOT EXISTS idx_ledger_federation ON payment_ledger(federation_id);
+      CREATE INDEX IF NOT EXISTS idx_ledger_idempotency ON payment_ledger(idempotency_key);
+      CREATE INDEX IF NOT EXISTS idx_ledger_created ON payment_ledger(created_at);
+
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_id TEXT;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_unit_price REAL;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS service_unit_price_paise INTEGER;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS quantity INTEGER DEFAULT 1;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS effective_quantity INTEGER DEFAULT 1;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS gross_amount REAL;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS gross_amount_paise INTEGER;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS worker_payout REAL;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS worker_payout_paise INTEGER;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS insurance_contribution REAL;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS insurance_contribution_paise INTEGER;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS federation_share REAL;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS federation_share_paise INTEGER;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS platform_fee REAL;
+      ALTER TABLE bookings ADD COLUMN IF NOT EXISTS platform_fee_paise INTEGER;
+
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS worker_type TEXT;
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS amount_paise INTEGER;
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS worker_payout_paise INTEGER;
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS insurance_deduction_paise INTEGER;
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS federation_share_paise INTEGER;
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS platform_commission_paise INTEGER;
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS federation_share REAL DEFAULT 0.0;
+      ALTER TABLE payments ADD COLUMN IF NOT EXISTS split_status TEXT DEFAULT 'pending';
     `);
 
     // Backfill payments.federation_id from bookings if missing
@@ -410,21 +554,65 @@ async function initDb() {
       WHERE federation_id IS NULL AND booking_id IS NOT NULL
     `);
 
-    // Seed one federation + one admin if empty
+    // Backfill federation codes
+    await db.run(`
+      UPDATE federations 
+      SET code = 'PILOT-FED'
+      WHERE (code IS NULL OR code = '') AND name = 'Pilot Federation'
+    `);
+    await db.run(`
+      UPDATE federations 
+      SET code = 'FED-' || UPPER(SUBSTR(id, 1, 8))
+      WHERE code IS NULL OR code = ''
+    `);
+
+    // Backfill worker_type & final_verification_status
+    await db.run(`
+      UPDATE workers 
+      SET worker_type = CASE WHEN federation_id IS NULL THEN 'independent' ELSE 'federation' END
+      WHERE worker_type IS NULL OR worker_type = ''
+    `);
+    await db.run(`
+      UPDATE workers 
+      SET final_verification_status = CASE WHEN skill_certificate_verified = 1 THEN 'approved' ELSE 'pending' END
+      WHERE final_verification_status IS NULL OR final_verification_status = ''
+    `);
+
+    // Seed federations + supervising & federation admins
     const fedCountRes = await db.get('SELECT COUNT(*) as c FROM federations');
     const fedCount = parseInt(fedCountRes.c);
     
-    if (fedCount === 0) {
+    let pilotFed = await db.get("SELECT id FROM federations WHERE name = 'Pilot Federation'");
+    if (!pilotFed) {
       const fedId = uuidv4();
-      await db.run('INSERT INTO federations (id, name, region) VALUES (?, ?, ?)', [
-        fedId, 'Pilot Federation', 'Demo Region'
+      await db.run('INSERT INTO federations (id, name, region, code, status) VALUES (?, ?, ?, ?, ?)', [
+        fedId, 'Pilot Federation', 'Demo Region', 'PILOT-FED', 'active'
       ]);
-      const bcrypt = require('crypto').createHash('sha256').update('admin123').digest('hex');
+      pilotFed = { id: fedId };
+    }
+
+    const bcrypt = require('crypto').createHash('sha256').update('admin123').digest('hex');
+
+    // Ensure supervising admin exists (admin@demo.com with supervising_admin role)
+    const superAdmin = await db.get("SELECT id FROM admins WHERE email = 'admin@demo.com'");
+    if (!superAdmin) {
       await db.run(
-        'INSERT INTO admins (id, federation_id, full_name, email, password_hash) VALUES (?, ?, ?, ?, ?)',
-        [uuidv4(), fedId, 'Demo Admin', 'admin@demo.com', bcrypt]
+        'INSERT INTO admins (id, federation_id, full_name, email, password_hash, role, status) VALUES (?, NULL, ?, ?, ?, ?, ?)',
+        [uuidv4(), 'Supervising Admin', 'admin@demo.com', bcrypt, 'supervising_admin', 'active']
       );
-      console.log('✅ Seeded federation + admin (admin@demo.com / admin123)');
+      console.log('✅ Seeded Supervising Admin (admin@demo.com / admin123)');
+    } else {
+      await db.run("UPDATE admins SET role = 'supervising_admin' WHERE email = 'admin@demo.com'");
+    }
+
+    // Ensure dedicated federation admin exists (fedadmin@demo.com) for Pilot Federation
+    const fedAdmin = await db.get("SELECT id FROM admins WHERE email = 'fedadmin@demo.com'");
+    if (!fedAdmin && pilotFed) {
+      await db.run(
+        'INSERT INTO admins (id, federation_id, full_name, email, password_hash, role, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [uuidv4(), pilotFed.id, 'Pilot Federation Admin', 'fedadmin@demo.com', bcrypt, 'federation_admin', 'active']
+      );
+      console.log('✅ Seeded Federation Admin (fedadmin@demo.com / admin123)');
     }
 
     // Seed safe demo insurance policy for federations if none exists
@@ -441,6 +629,19 @@ async function initDb() {
         `, [policyId, fed.id, `${fed.name} Health & Accidental Shield`, `POL-${fed.id.slice(0, 6).toUpperCase()}`]);
         console.log(`✅ Seeded demo insurance policy for ${fed.name}`);
       }
+    }
+
+    // Seed service catalog from CSV if empty or incomplete
+    try {
+      const { seedServiceCatalog } = require('../scripts/seed_service_catalog');
+      const serviceCountRes = await db.get('SELECT COUNT(*) as c FROM service_catalog');
+      const serviceCount = parseInt(serviceCountRes?.c || '0', 10);
+      if (serviceCount < 249) {
+        console.log(`📦 Seeding service catalog (${serviceCount}/249 services found)...`);
+        await seedServiceCatalog(db);
+      }
+    } catch (seedErr) {
+      console.warn('⚠️ Non-fatal service catalog auto-seed warning:', seedErr.message);
     }
     
     console.log('✅ Database initialization complete.');

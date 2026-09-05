@@ -8,10 +8,11 @@ const { haversineKm } = require('../utils/distance');
 const trackingService = require('../services/trackingService');
 const emergencyService = require('../services/emergencyService');
 const smsService = require('../services/smsService');
+const payoutService = require('../services/payoutService');
 
 // POST /bookings/emergency — customer creates an on-demand emergency booking
 router.post('/emergency', requireAuth, requireRole('customer'), async (req, res) => {
-  const { skill_category, service_address, service_lat, service_lng, emergency_fee, timeout_seconds, federation_id } = req.body;
+  const { skill_category, service_address, service_lat, service_lng, emergency_fee, timeout_seconds, federation_id, service_id, quantity } = req.body;
   if (!skill_category || !service_address || !service_lat || !service_lng) {
     return fail(res, 'BAD_REQUEST', 'skill_category, service_address, service_lat, service_lng are required for emergency booking');
   }
@@ -50,6 +51,27 @@ router.post('/emergency', requireAuth, requireRole('customer'), async (req, res)
     bookingFederationId = fallbackFed ? fallbackFed.id : null;
   }
 
+  // Resolve service catalog item and pricing snapshot
+  let catalogService = null;
+  if (service_id) {
+    catalogService = await db.get('SELECT * FROM service_catalog WHERE service_id = ? OR id = ?', [service_id, service_id]);
+  }
+  if (!catalogService) {
+    catalogService = await db.get('SELECT * FROM service_catalog WHERE LOWER(category) = LOWER(?) AND is_active = 1 LIMIT 1', [skill_category]);
+  }
+
+  const basePricePaise = catalogService ? catalogService.base_price_paise : 30000;
+  const minQty = catalogService ? catalogService.minimum_quantity : 1;
+  const reqQty = Math.max(1, parseInt(quantity, 10) || 1);
+  const workerType = bookingFederationId ? 'federation' : 'independent';
+
+  const financials = payoutService.calculateBookingFinancials({
+    baseUnitPricePaise: basePricePaise,
+    quantity: reqQty,
+    minimumQuantity: minQty,
+    workerType,
+  });
+
   const id = uuidv4();
   const shortCode = smsService.generateShortCode();
   const timeoutSec = Number(timeout_seconds) || 60;
@@ -58,10 +80,25 @@ router.post('/emergency', requireAuth, requireRole('customer'), async (req, res)
   await db.run(`
     INSERT INTO bookings (
       id, customer_id, federation_id, skill_category, service_address, service_lat, service_lng,
-      scheduled_time, is_emergency, emergency_timeout_seconds, emergency_fee, status, rejected_worker_ids, short_code
+      scheduled_time, is_emergency, emergency_timeout_seconds, emergency_fee, status, rejected_worker_ids, short_code,
+      service_id, service_unit_price, service_unit_price_paise, quantity, effective_quantity,
+      gross_amount, gross_amount_paise, worker_payout, worker_payout_paise,
+      insurance_contribution, insurance_contribution_paise, federation_share, federation_share_paise,
+      platform_fee, platform_fee_paise
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'immediate', 1, ?, ?, 'requested', '[]', ?)
-  `, [id, req.user.id, bookingFederationId, skill_category, service_address, service_lat, service_lng, timeoutSec, fee, shortCode]);
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'immediate', 1, ?, ?, 'requested', '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    id, req.user.id, bookingFederationId, skill_category, service_address, service_lat, service_lng,
+    timeoutSec, fee, shortCode,
+    catalogService?.service_id || null,
+    financials.base_unit_price, financials.base_unit_price_paise,
+    financials.requested_quantity, financials.effective_quantity,
+    financials.gross_amount, financials.gross_amount_paise,
+    financials.worker_share, financials.worker_share_paise,
+    financials.insurance_share, financials.insurance_share_paise,
+    financials.federation_share, financials.federation_share_paise,
+    financials.platform_fee, financials.platform_fee_paise
+  ]);
 
   // Dispatch immediately to closest eligible candidate
   const dispatchResult = await emergencyService.dispatchEmergencyBooking(id, timeoutSec);
@@ -87,7 +124,7 @@ router.post('/emergency', requireAuth, requireRole('customer'), async (req, res)
 
 // POST /bookings — customer creates a booking
 router.post('/', requireAuth, requireRole('customer'), async (req, res) => {
-  const { skill_category, service_address, service_lat, service_lng, scheduled_time, federation_id } = req.body;
+  const { skill_category, service_address, service_lat, service_lng, scheduled_time, federation_id, service_id, quantity } = req.body;
   if (!skill_category || !service_address || !scheduled_time) {
     return fail(res, 'BAD_REQUEST', 'skill_category, service_address, scheduled_time required');
   }
@@ -98,6 +135,7 @@ router.post('/', requireAuth, requireRole('customer'), async (req, res) => {
   let worker_id = null;
   let estimated_distance_km = null;
   let bookingFederationId = federation_id || null;
+  let workerRecord = null;
 
   if (service_lat && service_lng) {
     const candidates = await db.all(`
@@ -108,10 +146,11 @@ router.post('/', requireAuth, requireRole('customer'), async (req, res) => {
       .map(w => ({ ...w, d: haversineKm(service_lat, service_lng, w.lat, w.lng) }))
       .sort((a, b) => a.d - b.d);
     if (withDist[0]) {
-      worker_id = withDist[0].id;
-      estimated_distance_km = withDist[0].d;
+      workerRecord = withDist[0];
+      worker_id = workerRecord.id;
+      estimated_distance_km = workerRecord.d;
       // Inherit worker's federation for consistent tenant accountability
-      bookingFederationId = withDist[0].federation_id;
+      bookingFederationId = workerRecord.federation_id;
     }
   }
 
@@ -121,10 +160,47 @@ router.post('/', requireAuth, requireRole('customer'), async (req, res) => {
     bookingFederationId = fallbackFed ? fallbackFed.id : null;
   }
 
+  // Resolve service from catalog
+  let catalogService = null;
+  if (service_id) {
+    catalogService = await db.get('SELECT * FROM service_catalog WHERE service_id = ? OR id = ?', [service_id, service_id]);
+  }
+  if (!catalogService) {
+    catalogService = await db.get('SELECT * FROM service_catalog WHERE LOWER(category) = LOWER(?) AND is_active = 1 LIMIT 1', [skill_category]);
+  }
+
+  const basePricePaise = catalogService ? catalogService.base_price_paise : 30000;
+  const minQty = catalogService ? catalogService.minimum_quantity : 1;
+  const reqQty = Math.max(1, parseInt(quantity, 10) || 1);
+  const workerType = (workerRecord && workerRecord.worker_type === 'independent') ? 'independent' : (bookingFederationId ? 'federation' : 'independent');
+
+  const financials = payoutService.calculateBookingFinancials({
+    baseUnitPricePaise: basePricePaise,
+    quantity: reqQty,
+    minimumQuantity: minQty,
+    workerType,
+  });
+
   await db.run(`
-    INSERT INTO bookings (id, customer_id, worker_id, federation_id, skill_category, service_address, service_lat, service_lng, scheduled_time, estimated_distance_km, short_code)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [id, req.user.id, worker_id, bookingFederationId, skill_category, service_address, service_lat, service_lng, scheduled_time, estimated_distance_km, shortCode]);
+    INSERT INTO bookings (
+      id, customer_id, worker_id, federation_id, skill_category, service_address, service_lat, service_lng, scheduled_time, estimated_distance_km, short_code,
+      service_id, service_unit_price, service_unit_price_paise, quantity, effective_quantity,
+      gross_amount, gross_amount_paise, worker_payout, worker_payout_paise,
+      insurance_contribution, insurance_contribution_paise, federation_share, federation_share_paise,
+      platform_fee, platform_fee_paise
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `, [
+    id, req.user.id, worker_id, bookingFederationId, skill_category, service_address, service_lat, service_lng, scheduled_time, estimated_distance_km, shortCode,
+    catalogService?.service_id || null,
+    financials.base_unit_price, financials.base_unit_price_paise,
+    financials.requested_quantity, financials.effective_quantity,
+    financials.gross_amount, financials.gross_amount_paise,
+    financials.worker_share, financials.worker_share_paise,
+    financials.insurance_share, financials.insurance_share_paise,
+    financials.federation_share, financials.federation_share_paise,
+    financials.platform_fee, financials.platform_fee_paise
+  ]);
 
   const booking = await db.get('SELECT * FROM bookings WHERE id = ?', [id]);
 
@@ -152,13 +228,15 @@ router.get('/:id', requireAuth, async (req, res) => {
   if (!booking) return fail(res, 'BOOKING_NOT_FOUND', 'Booking does not exist', 404);
 
   // Tenant scoping & role-based access control
-  if (req.user.role === 'admin' && booking.federation_id !== req.user.federation_id) {
-    return fail(res, 'BOOKING_NOT_FOUND', 'Booking does not exist in your federation', 404);
-  }
-  if (req.user.role === 'customer' && booking.customer_id !== req.user.id) {
+  if (req.user.role === 'supervising_admin') {
+    // Supervising Admin has global access
+  } else if (req.user.role === 'admin' || req.user.role === 'federation_admin') {
+    if (booking.federation_id && req.user.federation_id && booking.federation_id !== req.user.federation_id) {
+      return fail(res, 'BOOKING_NOT_FOUND', 'Booking does not exist in your federation', 404);
+    }
+  } else if (req.user.role === 'customer' && booking.customer_id !== req.user.id) {
     return fail(res, 'FORBIDDEN', 'Not authorized to view this booking', 403);
-  }
-  if (req.user.role === 'worker' && booking.worker_id !== req.user.id) {
+  } else if (req.user.role === 'worker' && booking.worker_id !== req.user.id) {
     return fail(res, 'FORBIDDEN', 'Not authorized to view this booking', 403);
   }
 
@@ -245,7 +323,17 @@ router.patch('/:id/complete', requireAuth, async (req, res) => {
   if (!isCustomer && !isWorker) return fail(res, 'FORBIDDEN', 'Not your booking', 403);
 
   const field = isCustomer ? 'completed_by_customer' : 'completed_by_worker';
-  await db.run(`UPDATE bookings SET ${field} = 1, updated_at = datetime('now') WHERE id = ?`, [req.params.id]);
+  const partsFee = req.body.parts_fee !== undefined ? Number(req.body.parts_fee) : null;
+  const serviceNotes = req.body.service_notes || req.body.notes || null;
+
+  if (isWorker && (partsFee !== null || serviceNotes !== null)) {
+    await db.run(
+      `UPDATE bookings SET ${field} = 1, parts_fee = COALESCE(?, parts_fee), service_notes = COALESCE(?, service_notes), updated_at = datetime('now') WHERE id = ?`,
+      [partsFee, serviceNotes, req.params.id]
+    );
+  } else {
+    await db.run(`UPDATE bookings SET ${field} = 1, updated_at = datetime('now') WHERE id = ?`, [req.params.id]);
+  }
 
   let updated = await db.get('SELECT * FROM bookings WHERE id = ?', [req.params.id]);
   if (updated.completed_by_customer && updated.completed_by_worker) {
@@ -253,6 +341,21 @@ router.patch('/:id/complete', requireAuth, async (req, res) => {
     trackingService.teardownTrackingSession(req.params.id);
     emergencyService.clearEmergencyTimer(req.params.id);
     updated = await db.get('SELECT * FROM bookings WHERE id = ?', [req.params.id]);
+
+    // Check if payment already recorded — allocate payout idempotently upon dual completion
+    const existingPayment = await db.get('SELECT * FROM payments WHERE booking_id = ?', [req.params.id]);
+    if (existingPayment && existingPayment.status === 'paid') {
+      try {
+        await payoutService.allocateBookingPayment({
+          bookingId: req.params.id,
+          paymentId: existingPayment.id,
+          idempotencyKey: `alloc_${existingPayment.id}`,
+          db,
+        });
+      } catch (allocErr) {
+        console.warn('⚠️ Non-fatal completion payout allocation warning:', allocErr.message);
+      }
+    }
   }
   return ok(res, updated);
 });
